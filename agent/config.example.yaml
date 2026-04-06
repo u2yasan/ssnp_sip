@@ -9,4 +9,3 @@ request_timeout_seconds: 15
 heartbeat_jitter_seconds_max: 10
 agent_version: "1.0.0"
 enrollment_generation: 1
-voting_key_expiry_at: "2026-04-20T00:00:00Z"

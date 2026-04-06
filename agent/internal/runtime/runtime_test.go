@@ -26,6 +26,7 @@ import (
 	"github.com/u2yasan/ssnp_sip/agent/internal/config"
 	"github.com/u2yasan/ssnp_sip/agent/internal/policy"
 	"github.com/u2yasan/ssnp_sip/agent/internal/state"
+	"github.com/u2yasan/ssnp_sip/agent/internal/symbol"
 )
 
 func TestAgentEnrollHeartbeatAndChecks(t *testing.T) {
@@ -125,12 +126,12 @@ func TestAgentEnrollHeartbeatAndChecks(t *testing.T) {
 		HeartbeatJitterSecondsMax: 0,
 		AgentVersion:              "1.0.0",
 		EnrollmentGeneration:      1,
-		VotingKeyExpiryAt:         "2026-04-20T00:00:00Z",
 	}
 
 	postClient := client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient)
 	policyClient := policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient)
-	agent, err := NewAgentWithClients(cfg, postClient, policyClient)
+	symbolClient := symbol.NewClientWithHTTP(cfg.MonitoredEndpoint, httpClient)
+	agent, err := NewAgentWithClients(cfg, postClient, policyClient, symbolClient)
 	if err != nil {
 		t.Fatalf("NewAgent() error = %v", err)
 	}
@@ -199,6 +200,7 @@ func TestAgentRunFailsWhenPolicyFetchFails(t *testing.T) {
 		cfg,
 		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
 		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+		symbol.NewClientWithHTTP(cfg.MonitoredEndpoint, httpClient),
 	)
 	if err != nil {
 		t.Fatalf("NewAgentWithClients() error = %v", err)
@@ -244,6 +246,7 @@ func TestAgentRunFailsWhenPolicyJSONIsInvalid(t *testing.T) {
 		cfg,
 		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
 		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+		symbol.NewClientWithHTTP(cfg.MonitoredEndpoint, httpClient),
 	)
 	if err != nil {
 		t.Fatalf("NewAgentWithClients() error = %v", err)
@@ -330,6 +333,7 @@ func TestAgentRunChecksFailsWhenPortalRejectsPolicyVersion(t *testing.T) {
 		cfg,
 		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
 		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+		symbol.NewClientWithHTTP(cfg.MonitoredEndpoint, httpClient),
 	)
 	if err != nil {
 		t.Fatalf("NewAgentWithClients() error = %v", err)
@@ -377,6 +381,7 @@ func TestAgentHeartbeatFailsOnBrokenStateFile(t *testing.T) {
 		cfg,
 		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
 		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+		symbol.NewClientWithHTTP(cfg.MonitoredEndpoint, httpClient),
 	)
 	if err != nil {
 		t.Fatalf("NewAgentWithClients() error = %v", err)
@@ -419,6 +424,7 @@ func TestAgentEnrollFailsWhenPortalRejectsSignature(t *testing.T) {
 		cfg,
 		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
 		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+		symbol.NewClientWithHTTP(cfg.MonitoredEndpoint, httpClient),
 	)
 	if err != nil {
 		t.Fatalf("NewAgentWithClients() error = %v", err)
@@ -464,6 +470,7 @@ func TestAgentHeartbeatFailsOnPortalTimeout(t *testing.T) {
 		cfg,
 		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
 		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+		symbol.NewClientWithHTTP(cfg.MonitoredEndpoint, httpClient),
 	)
 	if err != nil {
 		t.Fatalf("NewAgentWithClients() error = %v", err)
@@ -507,6 +514,7 @@ func TestAgentSubmitTelemetryFailsWithoutWarningFlags(t *testing.T) {
 		cfg,
 		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
 		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+		symbol.NewClientWithHTTP(cfg.MonitoredEndpoint, httpClient),
 	)
 	if err != nil {
 		t.Fatalf("NewAgentWithClients() error = %v", err)
@@ -571,6 +579,7 @@ func TestAgentPortalUnreachableWarningFlushesAfterRecovery(t *testing.T) {
 		cfg,
 		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
 		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+		symbol.NewClientWithHTTP(cfg.MonitoredEndpoint, httpClient),
 	)
 	if err != nil {
 		t.Fatalf("NewAgentWithClients() error = %v", err)
@@ -639,6 +648,14 @@ func TestAgentRunEmitsVotingKeyExpiryRiskWhenNearExpiry(t *testing.T) {
 				telemetryCalls++
 				assertRequestWarningFlagEquals(t, r, warningVotingKeyExpiryRisk)
 				return jsonResponse(http.StatusOK, `{"status":"accepted","node_id":"node-abc","received_at":"2026-04-06T10:40:00Z"}`)
+			case "/node/info":
+				return jsonResponse(http.StatusOK, `{"publicKey":"NODE_MAIN_PUBLIC_KEY"}`)
+			case "/chain/info":
+				return jsonResponse(http.StatusOK, `{"height":"40320"}`)
+			case "/network/properties":
+				return jsonResponse(http.StatusOK, `{"network":{"chain":{"votingSetGrouping":"1440","blockGenerationTargetTime":"30s"}}}`)
+			case "/accounts/NODE_MAIN_PUBLIC_KEY":
+				return jsonResponse(http.StatusOK, `{"account":{"supplementalPublicKeys":{"voting":{"publicKeys":[{"publicKey":"VOTE_A","startEpoch":"1","endEpoch":"34"}]}}}}`)
 			default:
 				return jsonResponse(http.StatusNotFound, `{"status":"error","error_code":"unknown"}`)
 			}
@@ -657,13 +674,13 @@ func TestAgentRunEmitsVotingKeyExpiryRiskWhenNearExpiry(t *testing.T) {
 		HeartbeatJitterSecondsMax: 0,
 		AgentVersion:              "1.0.0",
 		EnrollmentGeneration:      1,
-		VotingKeyExpiryAt:         time.Now().Add(13 * 24 * time.Hour).UTC().Format(time.RFC3339),
 	}
 
 	agent, err := NewAgentWithClients(
 		cfg,
 		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
 		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+		symbol.NewClientWithHTTP(cfg.MonitoredEndpoint, httpClient),
 	)
 	if err != nil {
 		t.Fatalf("NewAgentWithClients() error = %v", err)
@@ -679,6 +696,164 @@ func TestAgentRunEmitsVotingKeyExpiryRiskWhenNearExpiry(t *testing.T) {
 	}
 	if telemetryCalls != 1 {
 		t.Fatalf("telemetryCalls = %d, want 1", telemetryCalls)
+	}
+}
+
+func TestAgentRunDoesNotResendVotingKeyExpiryRiskWhenAlreadyActive(t *testing.T) {
+	tempDir := t.TempDir()
+	privateKeyPath, publicKeyPath := writeTestKeys(t, tempDir)
+	statePath := filepath.Join(tempDir, "state.json")
+	if err := state.Save(statePath, state.State{
+		ActiveWarnings: map[string]bool{
+			warningVotingKeyExpiryRisk: true,
+		},
+	}); err != nil {
+		t.Fatalf("state.Save() error = %v", err)
+	}
+
+	var telemetryCalls int
+	var heartbeatCalls int
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			switch r.URL.Path {
+			case "/api/v1/agent/policy":
+				return jsonResponse(http.StatusOK, `{
+				"policy_version":"2026-04",
+				"heartbeat_interval_seconds":1,
+				"cpu_profile":{"id":"cpu-check-v1","duration_seconds":3,"warmup_seconds":1,"measured_seconds":1,"cooldown_seconds":1,"worker_cap":8,"workload_mix":{"hashing":0.50,"integer":0.30,"matrix":0.20},"acceptance_floor":{"type":"normalized_score","minimum":0.0}},
+				"disk_profile":{"id":"disk-check-v1","duration_seconds":3,"warmup_seconds":1,"measured_seconds":1,"cooldown_seconds":1,"block_size_bytes":4096,"queue_depth":32,"concurrency":1,"read_ratio":0.70,"write_ratio":0.30,"acceptance_floor":{"type":"measured_iops","minimum":0}},
+				"hardware_thresholds":{"cpu_cores_min":1,"ram_gb_min":1,"storage_gb_min":1,"ssd_required":false},
+				"reference_environment":{"id":"ref-env-2026-04","os_image_id":"ubuntu-24.04-lts","agent_version":"1.0.0","cpu_profile_id":"cpu-check-v1","disk_profile_id":"disk-check-v1","baseline_source_date":"2026-04-06"}
+				}`)
+			case "/api/v1/agent/heartbeat":
+				heartbeatCalls++
+				return jsonResponse(http.StatusOK, `{"status":"accepted","node_id":"node-abc","received_at":"2026-04-06T10:35:00Z"}`)
+			case "/api/v1/agent/telemetry":
+				telemetryCalls++
+				return jsonResponse(http.StatusOK, `{"status":"accepted","node_id":"node-abc","received_at":"2026-04-06T10:40:00Z"}`)
+			case "/node/info":
+				return jsonResponse(http.StatusOK, `{"publicKey":"NODE_MAIN_PUBLIC_KEY"}`)
+			case "/chain/info":
+				return jsonResponse(http.StatusOK, `{"height":"40320"}`)
+			case "/network/properties":
+				return jsonResponse(http.StatusOK, `{"network":{"chain":{"votingSetGrouping":"1440","blockGenerationTargetTime":"30s"}}}`)
+			case "/accounts/NODE_MAIN_PUBLIC_KEY":
+				return jsonResponse(http.StatusOK, `{"account":{"supplementalPublicKeys":{"voting":{"publicKeys":[{"publicKey":"VOTE_A","startEpoch":"1","endEpoch":"34"}]}}}}`)
+			default:
+				return jsonResponse(http.StatusNotFound, `{"status":"error","error_code":"unknown"}`)
+			}
+		}),
+	}
+
+	cfg := config.Config{
+		NodeID:                    "node-abc",
+		PortalBaseURL:             "http://mock.portal",
+		AgentKeyPath:              privateKeyPath,
+		AgentPublicKeyPath:        publicKeyPath,
+		MonitoredEndpoint:         "https://node-01.example.net:3001",
+		StatePath:                 statePath,
+		TempDir:                   tempDir,
+		RequestTimeoutSeconds:     5,
+		HeartbeatJitterSecondsMax: 0,
+		AgentVersion:              "1.0.0",
+		EnrollmentGeneration:      1,
+	}
+
+	agent, err := NewAgentWithClients(
+		cfg,
+		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
+		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+		symbol.NewClientWithHTTP(cfg.MonitoredEndpoint, httpClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAgentWithClients() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		cancel()
+	}()
+	if err := agent.Run(ctx); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if telemetryCalls != 0 {
+		t.Fatalf("telemetryCalls = %d, want 0", telemetryCalls)
+	}
+	if heartbeatCalls == 0 {
+		t.Fatal("heartbeatCalls = 0, want at least 1")
+	}
+}
+
+func TestAgentRunContinuesWhenSymbolAPIUnavailable(t *testing.T) {
+	tempDir := t.TempDir()
+	privateKeyPath, publicKeyPath := writeTestKeys(t, tempDir)
+
+	var telemetryCalls int
+	var heartbeatCalls int
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			switch r.URL.Path {
+			case "/api/v1/agent/policy":
+				return jsonResponse(http.StatusOK, `{
+				"policy_version":"2026-04",
+				"heartbeat_interval_seconds":1,
+				"cpu_profile":{"id":"cpu-check-v1","duration_seconds":3,"warmup_seconds":1,"measured_seconds":1,"cooldown_seconds":1,"worker_cap":8,"workload_mix":{"hashing":0.50,"integer":0.30,"matrix":0.20},"acceptance_floor":{"type":"normalized_score","minimum":0.0}},
+				"disk_profile":{"id":"disk-check-v1","duration_seconds":3,"warmup_seconds":1,"measured_seconds":1,"cooldown_seconds":1,"block_size_bytes":4096,"queue_depth":32,"concurrency":1,"read_ratio":0.70,"write_ratio":0.30,"acceptance_floor":{"type":"measured_iops","minimum":0}},
+				"hardware_thresholds":{"cpu_cores_min":1,"ram_gb_min":1,"storage_gb_min":1,"ssd_required":false},
+				"reference_environment":{"id":"ref-env-2026-04","os_image_id":"ubuntu-24.04-lts","agent_version":"1.0.0","cpu_profile_id":"cpu-check-v1","disk_profile_id":"disk-check-v1","baseline_source_date":"2026-04-06"}
+				}`)
+			case "/api/v1/agent/heartbeat":
+				heartbeatCalls++
+				return jsonResponse(http.StatusOK, `{"status":"accepted","node_id":"node-abc","received_at":"2026-04-06T10:35:00Z"}`)
+			case "/api/v1/agent/telemetry":
+				telemetryCalls++
+				return jsonResponse(http.StatusOK, `{"status":"accepted","node_id":"node-abc","received_at":"2026-04-06T10:40:00Z"}`)
+			case "/node/info":
+				return jsonResponse(http.StatusServiceUnavailable, `{"status":"error"}`)
+			default:
+				return jsonResponse(http.StatusNotFound, `{"status":"error","error_code":"unknown"}`)
+			}
+		}),
+	}
+
+	cfg := config.Config{
+		NodeID:                    "node-abc",
+		PortalBaseURL:             "http://mock.portal",
+		AgentKeyPath:              privateKeyPath,
+		AgentPublicKeyPath:        publicKeyPath,
+		MonitoredEndpoint:         "https://node-01.example.net:3001",
+		StatePath:                 filepath.Join(tempDir, "state.json"),
+		TempDir:                   tempDir,
+		RequestTimeoutSeconds:     5,
+		HeartbeatJitterSecondsMax: 0,
+		AgentVersion:              "1.0.0",
+		EnrollmentGeneration:      1,
+	}
+
+	agent, err := NewAgentWithClients(
+		cfg,
+		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
+		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+		symbol.NewClientWithHTTP(cfg.MonitoredEndpoint, httpClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAgentWithClients() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		cancel()
+	}()
+	if err := agent.Run(ctx); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if telemetryCalls != 0 {
+		t.Fatalf("telemetryCalls = %d, want 0", telemetryCalls)
+	}
+	if heartbeatCalls == 0 {
+		t.Fatal("heartbeatCalls = 0, want at least 1")
 	}
 }
 
@@ -741,6 +916,7 @@ func TestAgentRunEmitsCertificateExpiryRiskWhenTLSCertNearExpiry(t *testing.T) {
 		cfg,
 		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
 		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+		symbol.NewClientWithHTTP(cfg.MonitoredEndpoint, httpClient),
 	)
 	if err != nil {
 		t.Fatalf("NewAgentWithClients() error = %v", err)

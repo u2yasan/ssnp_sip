@@ -321,8 +321,10 @@ v0.1 warning generation rules:
 - `local_check_execution_failed`
   - emit only when hardware / CPU / disk checks are execution failures, not normal pass/fail results;
 - `voting_key_expiry_risk`
-  - use `config.yaml:voting_key_expiry_at` as the v0.1 input source;
-  - emit when the configured expiry is within 14 days;
+  - use the `monitored_endpoint` Symbol node API as the v0.1 input source;
+  - derive the current node account and active voting-key lifetime from chain data;
+  - emit when the earliest active voting key is within 14 days of expiry;
+  - treat node API failure, malformed JSON, missing fields, or empty voting-key data as silent no-op;
 - `certificate_expiry_risk`
   - use `monitored_endpoint` only when it is `https`;
   - inspect the leaf certificate `NotAfter` timestamp only;
@@ -343,6 +345,7 @@ The portal-side agent interface should stay minimal:
 - revoke or rotate agent identity;
 - receive signed heartbeat;
 - receive signed warning telemetry;
+- expose accepted telemetry history and latest-view reads;
 - receive hardware-check result;
 - fetch static agent policy metadata if needed.
 

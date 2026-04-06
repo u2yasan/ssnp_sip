@@ -100,7 +100,8 @@ Agent-originated warnings are supplemental control-plane and operator signals on
 
 Current v0.1 input sources:
 - voting-key expiry reminders
-  - derived from local `config.yaml:voting_key_expiry_at`;
+  - derived from Symbol node API reads against `monitored_endpoint`;
+  - node API failure, malformed JSON, missing fields, or empty voting-key data are silent no-op;
 - TLS certificate expiry reminders
   - derived from local inspection of the `monitored_endpoint` leaf certificate expiry;
 - portal-unreachable warning
