@@ -43,6 +43,8 @@ SSNP は **非コンセンサス型の外部レイヤープログラム** であ
 - `08_notifications_and_ops.md`: 通知と運用ルール
 - `09_governance_and_rollout.md`: 段階導入とガバナンス境界
 - `10_open_questions.md`: 未解決論点
+- `11_program_agent_design.md`: Program Agent の責務、heartbeat 契約、セキュリティ境界
+- `12_program_agent_policy_file.md`: 静的 YAML policy file の構造と互換性ルール
 
 ## 整合性メモ
 リポジトリ内の一部 SIP ドラフトは、まだ local agent を optional としている。

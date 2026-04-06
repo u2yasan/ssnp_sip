@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SSNP Mockup Portal</title>
+    <meta
+      name="description"
+      content="Symbol Super Node Program の仕様書に基づく依存ゼロの静的モックアップ"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div class="hero__inner">
+        <p class="eyebrow">Static Mockup / Dependency-Free</p>
+        <div class="hero__copy">
+          <div>
+            <h1>SSNP Public Portal</h1>
+            <p class="hero__lead">
+              Symbol voting node の登録、監視、Qualified 判定、ランキング、通知を
+              低コストで可視化する静的モックアップ。
+            </p>
+          </div>
+          <div class="hero__panel">
+            <div class="metric-tile">
+              <span class="metric-tile__label">Qualified Nodes</span>
+              <strong class="metric-tile__value">18 / 24</strong>
+            </div>
+            <div class="metric-tile">
+              <span class="metric-tile__label">Observation Window</span>
+              <strong class="metric-tile__value">72h</strong>
+            </div>
+            <div class="metric-tile">
+              <span class="metric-tile__label">Probe Regions</span>
+              <strong class="metric-tile__value">3</strong>
+            </div>
+          </div>
+        </div>
+        <nav class="hero__nav" aria-label="Main">
+          <a href="#overview">概要</a>
+          <a href="#ranking">ランキング</a>
+          <a href="#registration">登録</a>
+          <a href="#operations">通知</a>
+          <a href="#architecture">構成</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="section section--grid" id="overview">
+        <div class="section__heading">
+          <p class="section__eyebrow">Program Snapshot</p>
+          <h2>SSNP が扱う対象</h2>
+          <p>
+            このモックアップは仕様書のMVP前提に限定する。対象は Symbol mainnet の
+            voting node であり、自己申告ではなく外部 probe を主な真実源として扱う。
+          </p>
+        </div>
+
+        <div class="cards">
+          <article class="card">
+            <h3>登録状態</h3>
+            <p>新規ノードは登録後に 72 時間の観測期間へ入り、Qualified 判定前に継続性を確認する。</p>
+            <ul class="plain-list">
+              <li>登録済みだが未観測</li>
+              <li>観測済みだが未 Qualified</li>
+              <li>Qualified だが報酬対象外</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Qualification Gate</h3>
+            <p>性能ランキングは Qualified 後に使う。合格条件の代替にしてはいけない。</p>
+            <ul class="plain-list">
+              <li>Availability 99.0%以上</li>
+              <li>Finalized lag 閾値内 95%以上</li>
+              <li>Chain sync 閾値内 95%以上</li>
+              <li>Voting key 有効、Agent heartbeat 正常</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Reward Guardrail</h3>
+            <p>寡占防止を先に掛ける。Same Operator Group と同一 domain の多重取得を防ぐ。</p>
+            <ul class="plain-list">
+              <li>Group ごとに最大 1 枠</li>
+              <li>Registrable domain ごとに最大 1 枠</li>
+              <li>残りは独立ノードで backfill</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="ranking">
+        <div class="section__heading">
+          <p class="section__eyebrow">Public Ranking</p>
+          <h2>Qualified Node ランキング</h2>
+          <p>
+            スコアは `S = 0.7 * B + 0.3 * D` を前提としたダミーデータ。
+            単一点監視や CPU claim は採用しない。
+          </p>
+        </div>
+
+        <div class="toolbar">
+          <label class="toolbar__field">
+            <span>表示</span>
+            <select id="statusFilter">
+              <option value="all">すべて</option>
+              <option value="qualified">Qualified</option>
+              <option value="watch">Watch</option>
+            </select>
+          </label>
+          <label class="toolbar__field toolbar__field--wide">
+            <span>検索</span>
+            <input id="searchInput" type="search" placeholder="ノード名 / domain / country" />
+          </label>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Node</th>
+                <th>Status</th>
+                <th>Score</th>
+                <th>Availability</th>
+                <th>Finalization</th>
+                <th>Sync</th>
+                <th>Country</th>
+                <th>Operator Group</th>
+              </tr>
+            </thead>
+            <tbody id="rankingBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section section--split" id="registration">
+        <div class="section__heading">
+          <p class="section__eyebrow">Registration</p>
+          <h2>登録フローのモック</h2>
+          <p>
+            実装対象は登録ポータルの入力設計であり、署名検証や API 実装はまだ持たせない。
+            まず入力項目と状態遷移を固定する。
+          </p>
+        </div>
+        <div class="split-grid">
+          <article class="card">
+            <h3>入力必須項目</h3>
+            <form class="form">
+              <label>
+                <span>Operator Address</span>
+                <input type="text" value="NDABCD-SSNP-OPERATOR-001" readonly />
+              </label>
+              <label>
+                <span>Node Name</span>
+                <input type="text" value="symbol-manila-01" readonly />
+              </label>
+              <label>
+                <span>Monitored Endpoint</span>
+                <input type="text" value="https://node-01.example.net:3001" readonly />
+              </label>
+              <label>
+                <span>Alert Contact</span>
+                <input type="text" value="ops@example.net" readonly />
+              </label>
+              <label>
+                <span>Program Agent Linkage</span>
+                <input type="text" value="agent:ssnp:e7ab-221f-9c11" readonly />
+              </label>
+              <label>
+                <span>Signed Challenge</span>
+                <textarea rows="4" readonly>base64:signed-registration-challenge-sample</textarea>
+              </label>
+              <button type="button">Submit Mock Registration</button>
+            </form>
+          </article>
+
+          <article class="card">
+            <h3>状態遷移</h3>
+            <ol class="timeline">
+              <li>
+                <strong>Registered</strong>
+                <p>利用規約同意、endpoint 提出、署名 challenge 提出。</p>
+              </li>
+              <li>
+                <strong>Observed (0-72h)</strong>
+                <p>マルチリージョン probe が availability / sync / finalized lag を計測。</p>
+              </li>
+              <li>
+                <strong>Qualified</strong>
+                <p>current epoch の voting key、heartbeat、重大異常なしを確認。</p>
+              </li>
+              <li>
+                <strong>Reward Eligible or Filtered</strong>
+                <p>寡占防止ルールで reward eligibility を別判定。</p>
+              </li>
+            </ol>
+          </article>
+        </div>
+      </section>
+
+      <section class="section section--split" id="operations">
+        <div class="section__heading">
+          <p class="section__eyebrow">Operations</p>
+          <h2>通知と運用判断</h2>
+          <p>
+            罰則より先に予防を置く。通知の大半は外部観測から生成し、Agent は補助情報に留める。
+          </p>
+        </div>
+
+        <div class="split-grid">
+          <article class="card">
+            <h3>Active Alerts</h3>
+            <div class="alert-list">
+              <div class="alert alert--critical">
+                <span class="alert__level">Critical</span>
+                <div>
+                  <strong>symbol-eu-west-04</strong>
+                  <p>Program Agent heartbeat が 18 分停止。外部 probe では endpoint 応答あり。</p>
+                </div>
+              </div>
+              <div class="alert alert--critical">
+                <span class="alert__level">Critical</span>
+                <div>
+                  <strong>symbol-tokyo-02</strong>
+                  <p>Finalized lag が 3 リージョン中 2 リージョンで閾値超過。</p>
+                </div>
+              </div>
+              <div class="alert alert--warning">
+                <span class="alert__level">Warning</span>
+                <div>
+                  <strong>symbol-sg-01</strong>
+                  <p>TLS 証明書期限まで 11 日。更新推奨。</p>
+                </div>
+              </div>
+              <div class="alert alert--warning">
+                <span class="alert__level">Warning</span>
+                <div>
+                  <strong>symbol-us-central-03</strong>
+                  <p>Voting key 残存期間が短い。更新リマインド送信済み。</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="card">
+            <h3>運用原則</h3>
+            <ul class="plain-list">
+              <li>外部観測結果を優先し、自己申告で上書きしない</li>
+              <li>1 リージョン障害で全評価を無効化しない</li>
+              <li>Qualified 判定と reward eligibility を分離する</li>
+              <li>通知配送失敗も運用リスクとして監視する</li>
+            </ul>
+            <div class="status-board">
+              <div>
+                <span>Probe Coverage</span>
+                <strong>99.4%</strong>
+              </div>
+              <div>
+                <span>Alert Delivery</span>
+                <strong>98.8%</strong>
+              </div>
+              <div>
+                <span>Nodes in Observation</span>
+                <strong>6</strong>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="architecture">
+        <div class="section__heading">
+          <p class="section__eyebrow">Architecture</p>
+          <h2>低コスト運用を前提にした実装方針</h2>
+          <p>
+            モックアップ段階ではフロントエンドを静的ファイルに限定する。将来は JSON や API に差し替え可能だが、
+            現時点では表示層だけを明確に分離する。
+          </p>
+        </div>
+        <div class="architecture-grid">
+          <article class="card">
+            <h3>今すぐ持つもの</h3>
+            <ul class="plain-list">
+              <li>静的 HTML</li>
+              <li>単一 CSS</li>
+              <li>依存ゼロの素の JavaScript</li>
+              <li>ダミーデータ駆動のテーブル描画</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>後で差し替えるもの</h3>
+            <ul class="plain-list">
+              <li>ランキング JSON/API</li>
+              <li>登録送信 API</li>
+              <li>認証・署名検証</li>
+              <li>通知イベント配信</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>避けるもの</h3>
+            <ul class="plain-list">
+              <li>フレームワーク依存の初期固定化</li>
+              <li>ビルド必須構成</li>
+              <li>モック段階での過剰なバックエンド実装</li>
+              <li>CPU ベンチや ping 中心の誤指標</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>
+        This mockup is based on the SSNP Japanese specs in
+        <code>docs/specs_ja/</code> and is intended for local review or static hosting.
+      </p>
+    </footer>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

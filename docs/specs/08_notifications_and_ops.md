@@ -32,4 +32,5 @@ SSNP should help operators remain healthy rather than only penalizing them after
 ## Operational Rules
 - alerts must be generated from externally observed conditions where possible;
 - agent-originated status is useful, but not authoritative against external evidence;
+- node-local reputation or peer-selection signals may be retained as operator reference information, but must not override external probe evidence;
 - notification delivery failure should be observable as an operational risk.

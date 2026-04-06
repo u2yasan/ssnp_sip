@@ -32,7 +32,9 @@ Qualified node を総合スコアの降順で並べる。
 
 ## 計測原則
 - CPU claim は中核スコア入力にしない
+- hardware simple check status を ranking multiplier にしない
 - ICMP ping は中核スコア入力にしない
+- node-local reputation signal は参考情報に留め、中核的な公開スコア入力にしてはならない
 - 単一リージョン probe 結果が支配的になってはならない
 - 「速い見た目」より finalization と sync 追従を優先する
 
