@@ -146,6 +146,226 @@ func TestAgentEnrollHeartbeatAndChecks(t *testing.T) {
 	}
 }
 
+func TestAgentRunFailsWhenPolicyFetchFails(t *testing.T) {
+	tempDir := t.TempDir()
+	privateKeyPath, publicKeyPath := writeTestKeys(t, tempDir)
+
+	cfg := config.Config{
+		NodeID:                    "node-abc",
+		PortalBaseURL:             "http://mock.portal",
+		AgentKeyPath:              privateKeyPath,
+		AgentPublicKeyPath:        publicKeyPath,
+		MonitoredEndpoint:         "https://node-01.example.net:3001",
+		StatePath:                 filepath.Join(tempDir, "state.json"),
+		TempDir:                   tempDir,
+		RequestTimeoutSeconds:     5,
+		HeartbeatJitterSecondsMax: 0,
+		AgentVersion:              "1.0.0",
+		EnrollmentGeneration:      1,
+	}
+
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if r.URL.Path == "/api/v1/agent/policy" {
+				return jsonResponse(http.StatusInternalServerError, `{"status":"error","error_code":"policy_unavailable"}`)
+			}
+			return jsonResponse(http.StatusNotFound, `{"status":"error","error_code":"unknown"}`)
+		}),
+	}
+
+	agent, err := NewAgentWithClients(
+		cfg,
+		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
+		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAgentWithClients() error = %v", err)
+	}
+
+	err = agent.Run(context.Background())
+	if err == nil {
+		t.Fatal("Run() error = nil, want policy fetch failure")
+	}
+	if !strings.Contains(err.Error(), "policy fetch failed") {
+		t.Fatalf("Run() error = %v, want policy fetch failed", err)
+	}
+}
+
+func TestAgentRunFailsWhenPolicyJSONIsInvalid(t *testing.T) {
+	tempDir := t.TempDir()
+	privateKeyPath, publicKeyPath := writeTestKeys(t, tempDir)
+
+	cfg := config.Config{
+		NodeID:                    "node-abc",
+		PortalBaseURL:             "http://mock.portal",
+		AgentKeyPath:              privateKeyPath,
+		AgentPublicKeyPath:        publicKeyPath,
+		MonitoredEndpoint:         "https://node-01.example.net:3001",
+		StatePath:                 filepath.Join(tempDir, "state.json"),
+		TempDir:                   tempDir,
+		RequestTimeoutSeconds:     5,
+		HeartbeatJitterSecondsMax: 0,
+		AgentVersion:              "1.0.0",
+		EnrollmentGeneration:      1,
+	}
+
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if r.URL.Path == "/api/v1/agent/policy" {
+				return jsonResponse(http.StatusOK, `{"policy_version":`)
+			}
+			return jsonResponse(http.StatusNotFound, `{"status":"error","error_code":"unknown"}`)
+		}),
+	}
+
+	agent, err := NewAgentWithClients(
+		cfg,
+		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
+		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAgentWithClients() error = %v", err)
+	}
+
+	err = agent.Run(context.Background())
+	if err == nil {
+		t.Fatal("Run() error = nil, want JSON decode failure")
+	}
+}
+
+func TestAgentRunChecksFailsWhenPortalRejectsPolicyVersion(t *testing.T) {
+	tempDir := t.TempDir()
+	privateKeyPath, publicKeyPath := writeTestKeys(t, tempDir)
+
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			switch r.URL.Path {
+			case "/api/v1/agent/policy":
+				return jsonResponse(http.StatusOK, `{
+				"policy_version":"2026-04",
+				"heartbeat_interval_seconds":300,
+				"cpu_profile":{
+					"id":"cpu-check-v1",
+					"duration_seconds":3,
+					"warmup_seconds":1,
+					"measured_seconds":1,
+					"cooldown_seconds":1,
+					"worker_cap":8,
+					"workload_mix":{"hashing":0.50,"integer":0.30,"matrix":0.20},
+					"acceptance_floor":{"type":"normalized_score","minimum":0.0}
+				},
+				"disk_profile":{
+					"id":"disk-check-v1",
+					"duration_seconds":3,
+					"warmup_seconds":1,
+					"measured_seconds":1,
+					"cooldown_seconds":1,
+					"block_size_bytes":4096,
+					"queue_depth":32,
+					"concurrency":1,
+					"read_ratio":0.70,
+					"write_ratio":0.30,
+					"acceptance_floor":{"type":"measured_iops","minimum":0}
+				},
+				"hardware_thresholds":{
+					"cpu_cores_min":1,
+					"ram_gb_min":1,
+					"storage_gb_min":1,
+					"ssd_required":false
+				},
+				"reference_environment":{
+					"id":"ref-env-2026-04",
+					"os_image_id":"ubuntu-24.04-lts",
+					"agent_version":"1.0.0",
+					"cpu_profile_id":"cpu-check-v1",
+					"disk_profile_id":"disk-check-v1",
+					"baseline_source_date":"2026-04-06"
+				}
+				}`)
+			case "/api/v1/agent/checks":
+				return jsonResponse(http.StatusConflict, `{"status":"error","error_code":"policy_version_mismatch"}`)
+			default:
+				return jsonResponse(http.StatusNotFound, `{"status":"error","error_code":"unknown"}`)
+			}
+		}),
+	}
+
+	cfg := config.Config{
+		NodeID:                    "node-abc",
+		PortalBaseURL:             "http://mock.portal",
+		AgentKeyPath:              privateKeyPath,
+		AgentPublicKeyPath:        publicKeyPath,
+		MonitoredEndpoint:         "https://node-01.example.net:3001",
+		StatePath:                 filepath.Join(tempDir, "state.json"),
+		TempDir:                   tempDir,
+		RequestTimeoutSeconds:     5,
+		HeartbeatJitterSecondsMax: 0,
+		AgentVersion:              "1.0.0",
+		EnrollmentGeneration:      1,
+	}
+
+	agent, err := NewAgentWithClients(
+		cfg,
+		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
+		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAgentWithClients() error = %v", err)
+	}
+
+	err = agent.RunChecks(context.Background(), "registration", "check-001")
+	if err == nil {
+		t.Fatal("RunChecks() error = nil, want portal reject")
+	}
+	if !strings.Contains(err.Error(), "post /api/v1/agent/checks failed") {
+		t.Fatalf("RunChecks() error = %v, want checks post failure", err)
+	}
+}
+
+func TestAgentHeartbeatFailsOnBrokenStateFile(t *testing.T) {
+	tempDir := t.TempDir()
+	privateKeyPath, publicKeyPath := writeTestKeys(t, tempDir)
+	statePath := filepath.Join(tempDir, "state.json")
+	if err := os.WriteFile(statePath, []byte("{invalid"), 0o600); err != nil {
+		t.Fatalf("WriteFile(state) error = %v", err)
+	}
+
+	cfg := config.Config{
+		NodeID:                    "node-abc",
+		PortalBaseURL:             "http://mock.portal",
+		AgentKeyPath:              privateKeyPath,
+		AgentPublicKeyPath:        publicKeyPath,
+		MonitoredEndpoint:         "https://node-01.example.net:3001",
+		StatePath:                 statePath,
+		TempDir:                   tempDir,
+		RequestTimeoutSeconds:     5,
+		HeartbeatJitterSecondsMax: 0,
+		AgentVersion:              "1.0.0",
+		EnrollmentGeneration:      1,
+	}
+
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			t.Fatal("unexpected HTTP call")
+			return nil, nil
+		}),
+	}
+
+	agent, err := NewAgentWithClients(
+		cfg,
+		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
+		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAgentWithClients() error = %v", err)
+	}
+
+	err = agent.sendHeartbeat(context.Background())
+	if err == nil {
+		t.Fatal("sendHeartbeat() error = nil, want broken state failure")
+	}
+}
+
 func writeTestKeys(t *testing.T, dir string) (string, string) {
 	t.Helper()
 
