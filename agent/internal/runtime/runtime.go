@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/u2yasan/ssnp_sip/agent/internal/checks/cpu"
@@ -26,7 +27,9 @@ import (
 const (
 	warningPortalUnreachable    = "portal_unreachable"
 	warningLocalCheckExecFailed = "local_check_execution_failed"
+	warningVotingKeyExpiryRisk  = "voting_key_expiry_risk"
 	portalFailureThreshold      = 3
+	votingKeyRiskWindow         = 14 * 24 * time.Hour
 )
 
 type Agent struct {
@@ -90,6 +93,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	st.LastPolicyVersion = pol.PolicyVersion
 	if err := state.Save(a.cfg.StatePath, st); err != nil {
 		return err
+	}
+	if err := a.maybeEmitVotingKeyExpiryRisk(ctx, pol.PolicyVersion); err != nil {
+		logger.Log("error", "runtime", "telemetry_submit_failed", a.cfg.NodeID, map[string]any{"error": err.Error(), "warning_flag": warningVotingKeyExpiryRisk})
 	}
 
 	jitter := time.Duration(rand.Intn(a.cfg.HeartbeatJitterSecondsMax+1)) * time.Second
@@ -351,4 +357,19 @@ func localCheckExecutionFailed(hw hardware.Result, cpuResult cpu.Result, diskRes
 		hw.VisibleStorageBytes == 0 ||
 		(cpuResult.NormalizedScore == 0 && !cpuResult.Passed) ||
 		(diskResult.MeasuredIOPS == 0 && !diskResult.Passed)
+}
+
+func (a *Agent) maybeEmitVotingKeyExpiryRisk(ctx context.Context, policyVersion string) error {
+	expiryRaw := strings.TrimSpace(a.cfg.VotingKeyExpiryAt)
+	if expiryRaw == "" {
+		return nil
+	}
+	expiryAt, err := time.Parse(time.RFC3339, expiryRaw)
+	if err != nil {
+		return fmt.Errorf("invalid voting_key_expiry_at: %w", err)
+	}
+	if time.Until(expiryAt) >= votingKeyRiskWindow {
+		return nil
+	}
+	return a.markWarning(ctx, policyVersion, warningVotingKeyExpiryRisk)
 }

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/u2yasan/ssnp_sip/agent/internal/client"
 	"github.com/u2yasan/ssnp_sip/agent/internal/config"
@@ -118,6 +119,7 @@ func TestAgentEnrollHeartbeatAndChecks(t *testing.T) {
 		HeartbeatJitterSecondsMax: 0,
 		AgentVersion:              "1.0.0",
 		EnrollmentGeneration:      1,
+		VotingKeyExpiryAt:         "2026-04-20T00:00:00Z",
 	}
 
 	postClient := client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient)
@@ -608,6 +610,72 @@ func TestAgentPortalUnreachableWarningFlushesAfterRecovery(t *testing.T) {
 	}
 }
 
+func TestAgentRunEmitsVotingKeyExpiryRiskWhenNearExpiry(t *testing.T) {
+	tempDir := t.TempDir()
+	privateKeyPath, publicKeyPath := writeTestKeys(t, tempDir)
+
+	var telemetryCalls int
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			switch r.URL.Path {
+			case "/api/v1/agent/policy":
+				return jsonResponse(http.StatusOK, `{
+				"policy_version":"2026-04",
+				"heartbeat_interval_seconds":1,
+				"cpu_profile":{"id":"cpu-check-v1","duration_seconds":3,"warmup_seconds":1,"measured_seconds":1,"cooldown_seconds":1,"worker_cap":8,"workload_mix":{"hashing":0.50,"integer":0.30,"matrix":0.20},"acceptance_floor":{"type":"normalized_score","minimum":0.0}},
+				"disk_profile":{"id":"disk-check-v1","duration_seconds":3,"warmup_seconds":1,"measured_seconds":1,"cooldown_seconds":1,"block_size_bytes":4096,"queue_depth":32,"concurrency":1,"read_ratio":0.70,"write_ratio":0.30,"acceptance_floor":{"type":"measured_iops","minimum":0}},
+				"hardware_thresholds":{"cpu_cores_min":1,"ram_gb_min":1,"storage_gb_min":1,"ssd_required":false},
+				"reference_environment":{"id":"ref-env-2026-04","os_image_id":"ubuntu-24.04-lts","agent_version":"1.0.0","cpu_profile_id":"cpu-check-v1","disk_profile_id":"disk-check-v1","baseline_source_date":"2026-04-06"}
+				}`)
+			case "/api/v1/agent/heartbeat":
+				return jsonResponse(http.StatusOK, `{"status":"accepted","node_id":"node-abc","received_at":"2026-04-06T10:35:00Z"}`)
+			case "/api/v1/agent/telemetry":
+				telemetryCalls++
+				assertRequestWarningFlagEquals(t, r, warningVotingKeyExpiryRisk)
+				return jsonResponse(http.StatusOK, `{"status":"accepted","node_id":"node-abc","received_at":"2026-04-06T10:40:00Z"}`)
+			default:
+				return jsonResponse(http.StatusNotFound, `{"status":"error","error_code":"unknown"}`)
+			}
+		}),
+	}
+
+	cfg := config.Config{
+		NodeID:                    "node-abc",
+		PortalBaseURL:             "http://mock.portal",
+		AgentKeyPath:              privateKeyPath,
+		AgentPublicKeyPath:        publicKeyPath,
+		MonitoredEndpoint:         "https://node-01.example.net:3001",
+		StatePath:                 filepath.Join(tempDir, "state.json"),
+		TempDir:                   tempDir,
+		RequestTimeoutSeconds:     5,
+		HeartbeatJitterSecondsMax: 0,
+		AgentVersion:              "1.0.0",
+		EnrollmentGeneration:      1,
+		VotingKeyExpiryAt:         time.Now().Add(13 * 24 * time.Hour).UTC().Format(time.RFC3339),
+	}
+
+	agent, err := NewAgentWithClients(
+		cfg,
+		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
+		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAgentWithClients() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		cancel()
+	}()
+	if err := agent.Run(ctx); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if telemetryCalls != 1 {
+		t.Fatalf("telemetryCalls = %d, want 1", telemetryCalls)
+	}
+}
+
 func writeTestKeys(t *testing.T, dir string) (string, string) {
 	t.Helper()
 
@@ -648,6 +716,23 @@ func assertJSONFieldExists(t *testing.T, r *http.Request, field string) {
 	}
 	if _, ok := payload[field]; !ok {
 		t.Fatalf("payload missing field %q", field)
+	}
+}
+
+func assertRequestWarningFlagEquals(t *testing.T, r *http.Request, expected string) {
+	t.Helper()
+
+	defer r.Body.Close()
+	var payload map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	flagsAny, ok := payload["warning_flags"].([]any)
+	if !ok || len(flagsAny) != 1 {
+		t.Fatalf("warning_flags = %#v, want single value %q", payload["warning_flags"], expected)
+	}
+	if flag, ok := flagsAny[0].(string); !ok || flag != expected {
+		t.Fatalf("warning flag = %#v, want %q", flagsAny[0], expected)
 	}
 }
 

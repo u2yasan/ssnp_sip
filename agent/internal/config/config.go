@@ -19,6 +19,7 @@ type Config struct {
 	HeartbeatJitterSecondsMax int    `yaml:"heartbeat_jitter_seconds_max"`
 	AgentVersion              string `yaml:"agent_version"`
 	EnrollmentGeneration      int    `yaml:"enrollment_generation"`
+	VotingKeyExpiryAt         string `yaml:"voting_key_expiry_at"`
 }
 
 func Load(path string) (Config, error) {
