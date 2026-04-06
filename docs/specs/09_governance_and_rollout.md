@@ -33,6 +33,18 @@ The accountable operator must retain responsibility for:
 - final classification decisions;
 - emergency intervention.
 
+## Comparison to the NEM Supernode Model
+SSNP may adopt an operating-body structure broadly comparable to the historical NEM Supernode Program,
+in the sense that a clearly identified central operator administers monitoring, publication, and reward operations.
+
+However, SSNP should not copy that model blindly.
+SSNP requires stricter governance around:
+
+- voting-key validity and current-epoch conditions;
+- Same Operator Group classification;
+- appeals and re-evaluation;
+- automation and AI decision boundaries.
+
 ## AI and Automation Boundary
 AI agents and automation may handle:
 - monitoring;

@@ -238,6 +238,11 @@ Initial deployment should use an external or separately approved program budget.
 
 The portal and program operations must be run under a clearly identified accountable governance or operating entity.
 
+This operating-body model may be broadly comparable to the historical NEM Supernode Program
+in the sense that a central identified operator administers monitoring, publication, and reward operations.
+However, SSNP requires stricter governance for voting-key validity, operator-group classification,
+appeals, and automation boundaries.
+
 AI agents and automation may be used for monitoring, notification, scoring, reporting, and routine operational workflows.
 However, final authority must remain with accountable human governance for:
 

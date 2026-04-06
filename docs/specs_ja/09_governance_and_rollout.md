@@ -32,6 +32,18 @@ SSNP は、protocol rewrite ではなく、network-stability support program と
 - 最終的な分類判定
 - 緊急介入
 
+## NEM Supernode 型との比較
+SSNP は、明確な中央運営主体が監視、公開、報酬事務を担うという意味では、
+歴史的な NEM Supernode Program に近い運営体制を採用してよい。
+
+ただし、そのまま盲目的に流用すべきではない。
+SSNP では、少なくとも以下についてより厳密な統治が必要である。
+
+- voting key の有効性と current epoch 条件
+- Same Operator Group 判定
+- 異議申立てと再審
+- 自動化および AI の判断境界
+
 ## AI と自動化の境界
 AI エージェントと自動化は以下を扱ってよい。
 - 監視
