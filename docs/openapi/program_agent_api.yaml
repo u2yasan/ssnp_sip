@@ -98,6 +98,41 @@ paths:
         "429":
           $ref: "#/components/responses/ErrorResponse"
   /api/v1/agent/telemetry:
+    get:
+      tags: [Agent]
+      summary: Read stored telemetry warnings
+      operationId: listTelemetry
+      parameters:
+        - name: node_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: warning_code
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - portal_unreachable
+              - local_check_execution_failed
+              - voting_key_expiry_risk
+              - certificate_expiry_risk
+        - name: view
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [latest]
+      responses:
+        "200":
+          description: Telemetry records returned
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/TelemetryListResponse"
+                  - $ref: "#/components/schemas/LatestTelemetryListResponse"
     post:
       tags: [Agent]
       summary: Submit supplemental warning telemetry
@@ -353,6 +388,66 @@ components:
               - certificate_expiry_risk
         signature:
           type: string
+    TelemetryEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - telemetry_timestamp
+        - warning_code
+      properties:
+        node_id:
+          type: string
+        telemetry_timestamp:
+          type: string
+          format: date-time
+        warning_code:
+          type: string
+          enum:
+            - portal_unreachable
+            - local_check_execution_failed
+            - voting_key_expiry_risk
+            - certificate_expiry_risk
+    LatestTelemetry:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - telemetry_timestamp
+        - warning_code
+      properties:
+        node_id:
+          type: string
+        telemetry_timestamp:
+          type: string
+          format: date-time
+        warning_code:
+          type: string
+          enum:
+            - portal_unreachable
+            - local_check_execution_failed
+            - voting_key_expiry_risk
+            - certificate_expiry_risk
+    TelemetryListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TelemetryEvent"
+    LatestTelemetryListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LatestTelemetry"
     AcceptedResponse:
       type: object
       additionalProperties: false
