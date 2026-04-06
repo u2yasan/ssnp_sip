@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -24,6 +25,8 @@ const (
 type Config struct {
 	ListenAddr              string
 	PolicyPath              string
+	NodesConfigPath         string
+	StatePath               string
 	AllowedClockSkewSeconds int
 	NotificationEmailTo     string
 	HeartbeatStaleAfter     time.Duration
@@ -47,6 +50,12 @@ func New(cfg Config) (*Server, error) {
 	if cfg.ListenAddr == "" {
 		return nil, errors.New("missing listen address")
 	}
+	if cfg.NodesConfigPath == "" {
+		return nil, errors.New("missing nodes config path")
+	}
+	if cfg.StatePath == "" {
+		return nil, errors.New("missing state path")
+	}
 	if cfg.AllowedClockSkewSeconds <= 0 {
 		cfg.AllowedClockSkewSeconds = 300
 	}
@@ -68,10 +77,18 @@ func New(cfg Config) (*Server, error) {
 		}
 		cfg.Notifier = notifier.StdoutNotifier{}
 	}
+	seedNodes, err := store.LoadNodesConfig(cfg.NodesConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	st, err := store.Load(seedNodes, cfg.StatePath)
+	if err != nil {
+		return nil, err
+	}
 	return &Server{
 		cfg:      cfg,
 		policy:   doc,
-		store:    store.New([]store.Node{{NodeID: "node-abc"}}),
+		store:    st,
 		notifier: cfg.Notifier,
 	}, nil
 }
@@ -169,6 +186,10 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	node.LastPolicyVersion = s.policy.PolicyVersion
 	node.LastHeartbeatSequence = 0
 	s.store.SaveNode(node)
+	if err := s.persist(); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_persist_failed", err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":                "ok",
 		"node_id":               nodeID,
@@ -228,6 +249,10 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	node.LastHeartbeatTimestamp = payload.HeartbeatTimestamp
 	node.LastPolicyVersion = s.policy.PolicyVersion
 	s.store.SaveNode(node)
+	if err := s.persist(); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_persist_failed", err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, acceptedResponse(payload.NodeID))
 }
 
@@ -281,6 +306,10 @@ func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 		CheckedAt:     stringField(payload, "checked_at"),
 	}) {
 		writeError(w, http.StatusConflict, "duplicate_event_id", "duplicate event_id")
+		return
+	}
+	if err := s.persist(); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_persist_failed", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -346,7 +375,14 @@ func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
 			TelemetryTimestamp: telemetryTimestamp,
 			WarningCode:        warningCode,
 		})
-		s.maybeNotifyAlert(r.Context(), nodeID, warningCode, telemetryTimestamp, time.Now().UTC())
+		if err := s.maybeNotifyAlert(r.Context(), nodeID, warningCode, telemetryTimestamp, time.Now().UTC()); err != nil {
+			writeError(w, http.StatusInternalServerError, "state_persist_failed", err.Error())
+			return
+		}
+	}
+	if err := s.persist(); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_persist_failed", err.Error())
+		return
 	}
 	writeJSON(w, http.StatusOK, acceptedResponse(nodeID))
 }
@@ -426,6 +462,10 @@ func acceptedResponse(nodeID string) map[string]any {
 	}
 }
 
+func (s *Server) persist() error {
+	return s.store.Save(s.cfg.StatePath)
+}
+
 func (s *Server) runAlertLoop(ctx context.Context) {
 	ticker := time.NewTicker(s.cfg.AlertScanInterval)
 	defer ticker.Stop()
@@ -451,27 +491,35 @@ func (s *Server) evaluateHeartbeatAlerts(ctx context.Context, now time.Time) {
 		age := now.Sub(lastSeen)
 		switch {
 		case age >= s.cfg.HeartbeatFailedAfter:
-			s.maybeNotifyAlert(ctx, node.NodeID, alertHeartbeatFailed, now.Format(time.RFC3339), now)
+			if err := s.maybeNotifyAlert(ctx, node.NodeID, alertHeartbeatFailed, now.Format(time.RFC3339), now); err != nil {
+				fmt.Fprintf(os.Stderr, "portal-server: failed heartbeat alert persistence for %s: %v\n", node.NodeID, err)
+			}
 		case age >= s.cfg.HeartbeatStaleAfter:
-			s.maybeNotifyAlert(ctx, node.NodeID, alertHeartbeatStale, now.Format(time.RFC3339), now)
+			if err := s.maybeNotifyAlert(ctx, node.NodeID, alertHeartbeatStale, now.Format(time.RFC3339), now); err != nil {
+				fmt.Fprintf(os.Stderr, "portal-server: stale heartbeat alert persistence for %s: %v\n", node.NodeID, err)
+			}
 		}
 	}
 }
 
-func (s *Server) maybeNotifyAlert(ctx context.Context, nodeID, alertCode, occurredAt string, now time.Time) {
+func (s *Server) maybeNotifyAlert(ctx context.Context, nodeID, alertCode, occurredAt string, now time.Time) error {
 	severity := severityForAlert(alertCode)
 	if state, ok := s.store.GetAlertState(nodeID, alertCode, string(severity)); ok {
 		lastSentAt, err := time.Parse(time.RFC3339, state.LastSentAt)
 		if err == nil && now.Before(lastSentAt.Add(cooldownForSeverity(severity))) {
-			return
+			return nil
 		}
+	}
+	recipient := s.cfg.NotificationEmailTo
+	if node, ok := s.store.GetNode(nodeID); ok && strings.TrimSpace(node.OperatorEmail) != "" {
+		recipient = node.OperatorEmail
 	}
 	notification := notifier.Notification{
 		NodeID:     nodeID,
 		AlertCode:  alertCode,
 		Severity:   severity,
 		Channel:    "email",
-		Recipient:  s.cfg.NotificationEmailTo,
+		Recipient:  recipient,
 		OccurredAt: occurredAt,
 		Message:    notificationMessage(alertCode),
 	}
@@ -494,7 +542,10 @@ func (s *Server) maybeNotifyAlert(ctx context.Context, nodeID, alertCode, occurr
 			EventTimestamp: now.Format(time.RFC3339),
 			Detail:         err.Error(),
 		})
-		return
+		if persistErr := s.persist(); persistErr != nil {
+			fmt.Fprintf(os.Stderr, "portal-server: failed to persist notification failure for %s: %v\n", nodeID, persistErr)
+		}
+		return nil
 	}
 	s.store.SaveAlertState(store.AlertState{
 		NodeID:      nodeID,
@@ -514,6 +565,7 @@ func (s *Server) maybeNotifyAlert(ctx context.Context, nodeID, alertCode, occurr
 		SentAt:     now.Format(time.RFC3339),
 		Status:     "sent",
 	})
+	return s.persist()
 }
 
 func severityForAlert(alertCode string) notifier.Severity {

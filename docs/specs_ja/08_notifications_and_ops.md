@@ -73,9 +73,11 @@ delivery failure ルール:
 現在の portal stub の通知配送は次のように実装されている。
 - 設定で露出する配送チャネルは `email` のみ
 - 実際の配送 backend は実メール送信ではなく、構造化通知出力を書くだけの stub notifier
-- portal は alert ごとの delivery attempt を in-memory で記録する
-- portal は notification delivery failure を in-memory の operational event として記録する
-- dedupe と cooldown の状態も in-memory のみなので、restart で履歴は消える
+- known node は別の seed config file から読む
+- runtime state は JSON snapshot file に保存する
+- portal は alert ごとの delivery attempt を runtime state に記録する
+- portal は notification delivery failure を runtime state の operational event として記録する
+- dedupe と cooldown の状態は snapshot 保存に成功すれば restart 後も維持される
 
 現在の portal 側 alert 生成:
 - agent から受けた telemetry warning:

@@ -22,6 +22,8 @@ func main() {
 func runMain() error {
 	listenAddr := flag.String("listen", "127.0.0.1:8080", "listen address")
 	policyPath := flag.String("policy", "", "path to policy yaml")
+	nodesConfigPath := flag.String("nodes-config", "", "path to known node seed config")
+	statePath := flag.String("state-path", "", "path to runtime state snapshot json")
 	clockSkew := flag.Int("allowed-clock-skew-seconds", 300, "allowed timestamp clock skew in seconds")
 	emailTo := flag.String("email-to", "", "mandatory notification email recipient")
 	staleAfter := flag.Int("heartbeat-stale-after-seconds", 900, "seconds after last heartbeat before stale alert")
@@ -32,10 +34,18 @@ func runMain() error {
 	if *policyPath == "" {
 		return fmt.Errorf("missing --policy")
 	}
+	if *nodesConfigPath == "" {
+		return fmt.Errorf("missing --nodes-config")
+	}
+	if *statePath == "" {
+		return fmt.Errorf("missing --state-path")
+	}
 
 	srv, err := server.New(server.Config{
 		ListenAddr:              *listenAddr,
 		PolicyPath:              *policyPath,
+		NodesConfigPath:         *nodesConfigPath,
+		StatePath:               *statePath,
 		AllowedClockSkewSeconds: *clockSkew,
 		NotificationEmailTo:     *emailTo,
 		HeartbeatStaleAfter:     time.Duration(*staleAfter) * time.Second,

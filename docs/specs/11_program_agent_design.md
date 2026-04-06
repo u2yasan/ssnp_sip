@@ -333,7 +333,8 @@ Portal-side handling rules in the current stub:
 - accepted warning telemetry may trigger operator notification handling on the portal side;
 - notification dedupe uses `node_id + alert_code + severity`;
 - `warning` severity uses a 24-hour cooldown;
-- delivery state is stored in memory only in v0.1;
+- known nodes come from a seed config file;
+- delivery and dedupe state are stored in a JSON snapshot file in v0.1;
 - notification delivery failure is recorded as an operational event and must not change qualification by itself.
 
 ## Portal API Contract
@@ -511,8 +512,8 @@ Query parameters:
 
 Response behavior:
 - default view returns telemetry history items;
-- `view=latest` returns the current in-memory latest view only;
-- the portal stub keeps telemetry in memory only and does not provide persistence in v0.1.
+- `view=latest` returns the current latest view only;
+- the portal stub stores telemetry and related alert state in a local JSON snapshot file in v0.1.
 
 ### `GET /api/v1/agent/policy`
 Purpose:
