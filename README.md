@@ -40,3 +40,23 @@ SSNP should be presented as:
 - **not** a change to consensus rules
 - **not** a reduction of existing harvesting rewards
 - a gradual, externally funded pilot first
+
+## Governance Note
+
+SSNP is intentionally designed as a non-consensus, external-layer program.
+
+It must not:
+
+- modify harvesting rewards
+- reduce transaction fees
+- introduce protocol-level enforcement
+
+Any future changes involving protocol economics require separate governance discussion.
+
+## Known Open Questions
+
+- reward funding source (critical)
+- scoring thresholds tuning
+- anti-concentration evidence rules
+- notification implementation scope
+- monitoring infrastructure decentralization
