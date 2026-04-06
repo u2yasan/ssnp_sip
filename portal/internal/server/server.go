@@ -259,6 +259,10 @@ func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		s.handleTelemetryRead(w, r)
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusBadRequest, "invalid_method", "invalid method")
 		return
@@ -302,6 +306,21 @@ func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
 		WarningCode:        warningCode,
 	})
 	writeJSON(w, http.StatusOK, acceptedResponse(nodeID))
+}
+
+func (s *Server) handleTelemetryRead(w http.ResponseWriter, r *http.Request) {
+	nodeID := strings.TrimSpace(r.URL.Query().Get("node_id"))
+	warningCode := strings.TrimSpace(r.URL.Query().Get("warning_code"))
+	view := strings.TrimSpace(r.URL.Query().Get("view"))
+	if view == "latest" {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"items": s.store.ListLatestTelemetry(nodeID, warningCode),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": s.store.ListTelemetry(nodeID, warningCode),
+	})
 }
 
 func (s *Server) authorizeMapPayload(node store.Node, payload map[string]any) error {

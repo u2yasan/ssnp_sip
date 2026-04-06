@@ -1,6 +1,7 @@
 package store
 
 import (
+	"sort"
 	"sync"
 )
 
@@ -26,11 +27,18 @@ type TelemetryEvent struct {
 	WarningCode        string
 }
 
+type LatestTelemetry struct {
+	NodeID             string
+	WarningCode        string
+	TelemetryTimestamp string
+}
+
 type Store struct {
 	mu              sync.RWMutex
 	nodes           map[string]Node
 	checkEvents     map[string]CheckEvent
 	telemetryEvents []TelemetryEvent
+	latestTelemetry map[string]LatestTelemetry
 }
 
 func New(seedNodes []Node) *Store {
@@ -39,8 +47,9 @@ func New(seedNodes []Node) *Store {
 		nodes[node.NodeID] = node
 	}
 	return &Store{
-		nodes:       nodes,
-		checkEvents: map[string]CheckEvent{},
+		nodes:           nodes,
+		checkEvents:     map[string]CheckEvent{},
+		latestTelemetry: map[string]LatestTelemetry{},
 	}
 }
 
@@ -78,4 +87,51 @@ func (s *Store) AddTelemetryEvent(event TelemetryEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.telemetryEvents = append(s.telemetryEvents, event)
+	key := event.NodeID + "\x00" + event.WarningCode
+	s.latestTelemetry[key] = LatestTelemetry{
+		NodeID:             event.NodeID,
+		WarningCode:        event.WarningCode,
+		TelemetryTimestamp: event.TelemetryTimestamp,
+	}
+}
+
+func (s *Store) ListTelemetry(nodeID, warningCode string) []TelemetryEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []TelemetryEvent
+	for _, event := range s.telemetryEvents {
+		if nodeID != "" && event.NodeID != nodeID {
+			continue
+		}
+		if warningCode != "" && event.WarningCode != warningCode {
+			continue
+		}
+		out = append(out, event)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].TelemetryTimestamp > out[j].TelemetryTimestamp
+	})
+	return out
+}
+
+func (s *Store) ListLatestTelemetry(nodeID, warningCode string) []LatestTelemetry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []LatestTelemetry
+	for _, event := range s.latestTelemetry {
+		if nodeID != "" && event.NodeID != nodeID {
+			continue
+		}
+		if warningCode != "" && event.WarningCode != warningCode {
+			continue
+		}
+		out = append(out, event)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].NodeID == out[j].NodeID {
+			return out[i].WarningCode < out[j].WarningCode
+		}
+		return out[i].NodeID < out[j].NodeID
+	})
+	return out
 }

@@ -128,6 +128,22 @@ func TestPortalHandlerFlow(t *testing.T) {
 	if telemetryRec.Code != http.StatusOK {
 		t.Fatalf("telemetry status = %d, want 200, body=%s", telemetryRec.Code, telemetryRec.Body.String())
 	}
+
+	telemetryListReq := httptest.NewRequest(http.MethodGet, "/api/v1/agent/telemetry?node_id=node-abc&warning_code=portal_unreachable", nil)
+	telemetryListRec := httptest.NewRecorder()
+	handler.ServeHTTP(telemetryListRec, telemetryListReq)
+	if telemetryListRec.Code != http.StatusOK {
+		t.Fatalf("telemetry list status = %d, want 200", telemetryListRec.Code)
+	}
+	assertTelemetryItemsLength(t, telemetryListRec.Body.Bytes(), 1)
+
+	latestReq := httptest.NewRequest(http.MethodGet, "/api/v1/agent/telemetry?view=latest", nil)
+	latestRec := httptest.NewRecorder()
+	handler.ServeHTTP(latestRec, latestReq)
+	if latestRec.Code != http.StatusOK {
+		t.Fatalf("latest telemetry status = %d, want 200", latestRec.Code)
+	}
+	assertTelemetryItemsLength(t, latestRec.Body.Bytes(), 1)
 }
 
 func TestChecksRejectPolicyMismatchAndTelemetryRejectsInvalidSignature(t *testing.T) {
@@ -342,6 +358,19 @@ func mustFingerprint(t *testing.T, pubHex string) string {
 		t.Fatalf("FingerprintFromHexPublicKey() error = %v", err)
 	}
 	return fingerprint
+}
+
+func assertTelemetryItemsLength(t *testing.T, body []byte, want int) {
+	t.Helper()
+	var payload struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if len(payload.Items) != want {
+		t.Fatalf("len(items) = %d, want %d", len(payload.Items), want)
+	}
 }
 
 func buildAgentBinary(t *testing.T, agentDir string) string {

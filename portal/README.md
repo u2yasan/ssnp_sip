@@ -5,6 +5,7 @@ SSNP Program Agent と結合するための最小 Go portal stub です。
 対象 endpoint:
 
 - `GET /api/v1/agent/policy`
+- `GET /api/v1/agent/telemetry`
 - `POST /api/v1/agent/enroll`
 - `POST /api/v1/agent/heartbeat`
 - `POST /api/v1/agent/checks`
@@ -18,6 +19,7 @@ SSNP Program Agent と結合するための最小 Go portal stub です。
 - policy 読込失敗時は起動失敗します
 - enrollment challenge は空でない文字列かどうかだけ見ます
 - `policy_version`、profile ID、heartbeat sequence、signature は fail-closed で検証します
+- telemetry は履歴一覧と latest view を in-memory で参照できます
 
 起動:
 
@@ -45,4 +47,11 @@ go run ./cmd/program-agent --config ./config.example.yaml run
 
 ```sh
 go run ./cmd/program-agent --config ./config.example.yaml check --event-type registration --event-id check-001
+```
+
+6. telemetry を参照する
+
+```sh
+curl "http://127.0.0.1:8080/api/v1/agent/telemetry?node_id=node-abc"
+curl "http://127.0.0.1:8080/api/v1/agent/telemetry?view=latest"
 ```
