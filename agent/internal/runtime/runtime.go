@@ -1,8 +1,8 @@
 package runtime
 
 import (
-	"crypto/ed25519"
 	"context"
+	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -24,12 +24,12 @@ import (
 )
 
 type Agent struct {
-	cfg         config.Config
-	httpClient  *client.Client
+	cfg          config.Config
+	httpClient   *client.Client
 	policyClient *policy.Client
-	privateKey  ed25519.PrivateKey
-	publicKey   ed25519.PublicKey
-	fingerprint string
+	privateKey   ed25519.PrivateKey
+	publicKey    ed25519.PublicKey
+	fingerprint  string
 }
 
 func NewAgent(cfg config.Config) (*Agent, error) {
@@ -183,6 +183,41 @@ func (a *Agent) RunChecks(ctx context.Context, eventType, eventID string) error 
 		"disk_check_passed": diskResult.Passed,
 		"overall_passed":    overall,
 		"submitted":         true,
+	})
+}
+
+func (a *Agent) SubmitTelemetry(ctx context.Context, warningFlags []string) error {
+	if len(warningFlags) == 0 {
+		return errors.New("missing warning flags")
+	}
+	pol, err := a.policyClient.Fetch(ctx, a.cfg.NodeID, a.fingerprint)
+	if err != nil {
+		return err
+	}
+
+	payload := map[string]any{
+		"schema_version":        "1",
+		"node_id":               a.cfg.NodeID,
+		"agent_key_fingerprint": a.fingerprint,
+		"telemetry_timestamp":   time.Now().UTC().Format(time.RFC3339),
+		"policy_version":        pol.PolicyVersion,
+		"warning_flags":         warningFlags,
+	}
+	sig, err := signMap(a.privateKey, payload)
+	if err != nil {
+		return err
+	}
+	payload["signature"] = sig
+
+	if err := a.httpClient.PostJSON(ctx, "/api/v1/agent/telemetry", payload); err != nil {
+		return err
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	return enc.Encode(map[string]any{
+		"policy_version": pol.PolicyVersion,
+		"warning_flags":  warningFlags,
+		"submitted":      true,
 	})
 }
 

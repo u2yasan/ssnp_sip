@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/u2yasan/ssnp_sip/agent/internal/config"
@@ -31,7 +32,7 @@ func runMain() error {
 
 	args := flag.Args()
 	if len(args) == 0 {
-		return errors.New("missing command: run | enroll | check")
+		return errors.New("missing command: run | enroll | check | telemetry")
 	}
 
 	cfg, err := config.Load(configPath)
@@ -70,7 +71,33 @@ func runMain() error {
 			return errors.New("missing --event-type or --event-id")
 		}
 		return agent.RunChecks(context.Background(), *eventType, *eventID)
+	case "telemetry":
+		fs := flag.NewFlagSet("telemetry", flag.ContinueOnError)
+		var warningFlags stringListFlag
+		fs.Var(&warningFlags, "warning-flag", "warning flag to submit (repeatable)")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if len(warningFlags) == 0 {
+			return errors.New("missing --warning-flag")
+		}
+		return agent.SubmitTelemetry(context.Background(), []string(warningFlags))
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
+}
+
+type stringListFlag []string
+
+func (s *stringListFlag) String() string {
+	return strings.Join(*s, ",")
+}
+
+func (s *stringListFlag) Set(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return errors.New("warning flag must not be empty")
+	}
+	*s = append(*s, value)
+	return nil
 }

@@ -10,6 +10,7 @@ SSNP Program Agent の最小 Go stub です。
 - `cpu-check-v1`
 - `disk-check-v1`
 - payload submit
+- telemetry submit
 
 コマンド:
 
@@ -17,6 +18,7 @@ SSNP Program Agent の最小 Go stub です。
 go run ./cmd/program-agent --config ./config.example.yaml run
 go run ./cmd/program-agent --config ./config.example.yaml enroll --challenge-id enroll-001
 go run ./cmd/program-agent --config ./config.example.yaml check --event-type registration --event-id check-001
+go run ./cmd/program-agent --config ./config.example.yaml telemetry --warning-flag voting_key_expiry_risk
 ```
 
 注意:
@@ -29,6 +31,8 @@ go run ./cmd/program-agent --config ./config.example.yaml check --event-type reg
 - `state.json` が壊れている場合、heartbeat は失敗し、sequence を巻き戻したり再初期化したりしません
 - portal が `policy_version mismatch` などの `4xx/5xx` で `checks` を reject した場合、agent はそのまま失敗を返します
 - invalid signature や timeout のような transport / portal error も握り潰しません
+- telemetry は `--warning-flag` の repeatable CLI 指定で送信します
+- telemetry は v0.1 では自動検知ではなく、署名付き warning payload の送信経路だけを実装しています
 - CPU 正規化スコアは stub 実装として weighted work units/sec をそのまま `normalized_cpu_score` として扱います
 - disk I/O チェックは local temp file に対する bounded test です
 

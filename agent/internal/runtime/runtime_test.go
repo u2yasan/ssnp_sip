@@ -5,8 +5,8 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/x509"
-	"encoding/pem"
 	"encoding/json"
+	"encoding/pem"
 	"io"
 	"net/http"
 	"os"
@@ -28,6 +28,7 @@ func TestAgentEnrollHeartbeatAndChecks(t *testing.T) {
 	var enrollCalls int
 	var heartbeatCalls int
 	var checkCalls int
+	var telemetryCalls int
 
 	httpClient := &http.Client{
 		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -92,6 +93,12 @@ func TestAgentEnrollHeartbeatAndChecks(t *testing.T) {
 				mu.Unlock()
 				assertJSONFieldExists(t, r, "overall_passed")
 				return jsonResponse(http.StatusOK, `{"status":"accepted","node_id":"node-abc","event_id":"check-001","overall_passed":true,"received_at":"2026-04-06T10:30:05Z"}`)
+			case "/api/v1/agent/telemetry":
+				mu.Lock()
+				telemetryCalls++
+				mu.Unlock()
+				assertJSONFieldExists(t, r, "warning_flags")
+				return jsonResponse(http.StatusOK, `{"status":"accepted","node_id":"node-abc","received_at":"2026-04-06T10:40:00Z"}`)
 			default:
 				return jsonResponse(http.StatusNotFound, `{"status":"error","error_code":"unknown","message":"not found"}`)
 			}
@@ -132,6 +139,9 @@ func TestAgentEnrollHeartbeatAndChecks(t *testing.T) {
 	if err := agent.RunChecks(ctx, "registration", "check-001"); err != nil {
 		t.Fatalf("RunChecks() error = %v", err)
 	}
+	if err := agent.SubmitTelemetry(ctx, []string{"voting_key_expiry_risk"}); err != nil {
+		t.Fatalf("SubmitTelemetry() error = %v", err)
+	}
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -143,6 +153,9 @@ func TestAgentEnrollHeartbeatAndChecks(t *testing.T) {
 	}
 	if checkCalls != 1 {
 		t.Fatalf("checkCalls = %d, want 1", checkCalls)
+	}
+	if telemetryCalls != 1 {
+		t.Fatalf("telemetryCalls = %d, want 1", telemetryCalls)
 	}
 }
 
@@ -453,6 +466,46 @@ func TestAgentHeartbeatFailsOnPortalTimeout(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), context.DeadlineExceeded.Error()) {
 		t.Fatalf("sendHeartbeat() error = %v, want deadline exceeded", err)
+	}
+}
+
+func TestAgentSubmitTelemetryFailsWithoutWarningFlags(t *testing.T) {
+	tempDir := t.TempDir()
+	privateKeyPath, publicKeyPath := writeTestKeys(t, tempDir)
+
+	cfg := config.Config{
+		NodeID:                    "node-abc",
+		PortalBaseURL:             "http://mock.portal",
+		AgentKeyPath:              privateKeyPath,
+		AgentPublicKeyPath:        publicKeyPath,
+		MonitoredEndpoint:         "https://node-01.example.net:3001",
+		StatePath:                 filepath.Join(tempDir, "state.json"),
+		TempDir:                   tempDir,
+		RequestTimeoutSeconds:     5,
+		HeartbeatJitterSecondsMax: 0,
+		AgentVersion:              "1.0.0",
+		EnrollmentGeneration:      1,
+	}
+
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			t.Fatal("unexpected HTTP call")
+			return nil, nil
+		}),
+	}
+
+	agent, err := NewAgentWithClients(
+		cfg,
+		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
+		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAgentWithClients() error = %v", err)
+	}
+
+	err = agent.SubmitTelemetry(context.Background(), nil)
+	if err == nil {
+		t.Fatal("SubmitTelemetry() error = nil, want missing warning flags failure")
 	}
 }
 
