@@ -69,6 +69,30 @@ delivery failure ルール:
 - delivery failure 自体を qualification failure として扱わない
 - program operations が追跡できるよう可視化する
 
+## v0.1 における Portal Stub の Delivery 挙動
+現在の portal stub の通知配送は次のように実装されている。
+- 設定で露出する配送チャネルは `email` のみ
+- 実際の配送 backend は実メール送信ではなく、構造化通知出力を書くだけの stub notifier
+- portal は alert ごとの delivery attempt を in-memory で記録する
+- portal は notification delivery failure を in-memory の operational event として記録する
+- dedupe と cooldown の状態も in-memory のみなので、restart で履歴は消える
+
+現在の portal 側 alert 生成:
+- agent から受けた telemetry warning:
+  - `portal_unreachable`
+  - `voting_key_expiry_risk`
+  - `certificate_expiry_risk`
+  - `local_check_execution_failed`
+- portal 側で観測する heartbeat alert:
+  - `heartbeat_stale`
+  - `heartbeat_failed`
+
+現在の portal 側 heartbeat threshold:
+- `heartbeat_stale`
+  - 最後に accept した heartbeat から 15 分超で発火
+- `heartbeat_failed`
+  - 最後に accept した heartbeat から 30 分超で発火
+
 ## Program Agent Warning Inputs In v0.1
 Agent 由来 warning は、control-plane と operator 向けの補助 signal に留まる。
 
@@ -86,3 +110,6 @@ v0.1 の入力源:
 - `portal_unreachable` は agent-to-portal control-plane warning である
 - Program Agent heartbeat failure は portal が観測する liveness state である
 - この 2 つを 1 つの運用カテゴリに潰してはならない
+
+実装メモ:
+- portal stub は内部 scan loop で heartbeat `stale` / `failed` を評価し、同じ severity-based dedupe ルールを適用する

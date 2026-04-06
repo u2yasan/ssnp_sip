@@ -329,6 +329,13 @@ v0.1 warning generation rules:
   - emit when the expiry is within 14 days;
   - treat this as expiry metadata inspection only, not PKI trust validation.
 
+Portal-side handling rules in the current stub:
+- accepted warning telemetry may trigger operator notification handling on the portal side;
+- notification dedupe uses `node_id + alert_code + severity`;
+- `warning` severity uses a 24-hour cooldown;
+- delivery state is stored in memory only in v0.1;
+- notification delivery failure is recorded as an operational event and must not change qualification by itself.
+
 ## Portal API Contract
 The portal-side agent interface should stay minimal:
 - enroll agent;
@@ -448,6 +455,12 @@ Success response:
 }
 ```
 
+Portal-side operational behavior:
+- the portal may derive `heartbeat_stale` and `heartbeat_failed` alerts from accepted heartbeat timestamps;
+- the current stub uses:
+  - `stale` after 15 minutes without an accepted heartbeat;
+  - `failed` after 30 minutes without an accepted heartbeat.
+
 ### `POST /api/v1/agent/checks`
 Purpose:
 - receive the hardware simple check result and bounded CPU / disk test result.
@@ -481,6 +494,11 @@ Success response:
   "received_at": "2026-04-06T10:40:00Z"
 }
 ```
+
+Portal-side operational behavior:
+- accepted telemetry warnings may trigger notification delivery handling;
+- the current stub exposes `email` as the only configured channel;
+- the current stub uses a notifier backend stub rather than real email transport.
 
 ### `GET /api/v1/agent/telemetry`
 Purpose:

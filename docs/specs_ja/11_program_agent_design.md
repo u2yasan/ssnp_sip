@@ -331,6 +331,13 @@ v0.1 の warning 生成ルール:
   - expiry が 14 日以内なら送信する
   - これは期限確認専用であり、PKI trust validation ではない
 
+現在の portal stub における portal 側処理ルール:
+- accept した warning telemetry は portal 側の operator notification handling を起動してよい
+- notification dedupe には `node_id + alert_code + severity` を使う
+- `warning` severity には 24 時間の cooldown を使う
+- v0.1 の delivery state は in-memory のみ
+- notification delivery failure は operational event として記録し、それ自体で qualification を変えてはならない
+
 ## Portal API 契約
 portal 側の agent interface は最小に保つ。
 - agent enroll
@@ -450,6 +457,12 @@ success response:
 }
 ```
 
+portal 側の運用挙動:
+- portal は accept した heartbeat timestamp から `heartbeat_stale` と `heartbeat_failed` alert を導出してよい
+- 現在の stub は次を使う
+  - accept した heartbeat が 15 分無ければ `stale`
+  - accept した heartbeat が 30 分無ければ `failed`
+
 ### `POST /api/v1/agent/checks`
 目的:
 - hardware simple check result と bounded CPU / disk test result を受け取る。
@@ -483,6 +496,11 @@ success response:
   "received_at": "2026-04-06T10:40:00Z"
 }
 ```
+
+portal 側の運用挙動:
+- accept した telemetry warning は notification delivery handling を起動してよい
+- 現在の stub で設定できるチャネルは `email` のみ
+- 現在の stub の notifier backend は実メール配送ではなく stub 実装である
 
 ### `GET /api/v1/agent/telemetry`
 目的:

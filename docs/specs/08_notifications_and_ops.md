@@ -69,6 +69,30 @@ Delivery failure rule:
 - do not treat delivery failure itself as a qualification failure;
 - make delivery failure visible to program operations for follow-up.
 
+## Portal Stub Delivery Behavior In v0.1
+The current portal stub implements notification delivery as follows:
+- `email` is the only delivery channel exposed by configuration;
+- the delivery backend is a stub notifier that writes structured notification output instead of sending real email;
+- the portal records per-alert delivery attempts in memory;
+- the portal records notification delivery failure as an operational event in memory;
+- dedupe and cooldown state are in memory only, so restart clears alert-delivery history.
+
+Current portal-side alert generation:
+- telemetry warnings received from the agent:
+  - `portal_unreachable`
+  - `voting_key_expiry_risk`
+  - `certificate_expiry_risk`
+  - `local_check_execution_failed`
+- portal-observed heartbeat alerts:
+  - `heartbeat_stale`
+  - `heartbeat_failed`
+
+Current portal-side heartbeat thresholds:
+- `heartbeat_stale`
+  - triggered when the last accepted heartbeat is older than 15 minutes;
+- `heartbeat_failed`
+  - triggered when the last accepted heartbeat is older than 30 minutes.
+
 ## Program Agent Warning Inputs In v0.1
 Agent-originated warnings are supplemental control-plane and operator signals only.
 
@@ -86,3 +110,6 @@ Operational distinction:
 - `portal_unreachable` is an agent-to-portal control-plane warning;
 - Program Agent heartbeat failure is a portal-observed liveness state;
 - these must not be collapsed into a single operational category.
+
+Implementation note:
+- the portal stub currently evaluates heartbeat `stale` / `failed` by an internal scan loop and applies the same severity-based dedupe rules to those alerts.
