@@ -15,6 +15,12 @@
 ## 運用原則
 SSNP は、障害後に罰するだけでなく、運用者が健全性を維持できるよう支援すべきである。
 
+## Delivery Channels
+MVP の通知チャネル方針:
+- `email` を全参加 operator の必須チャネルにする
+- `webhook`, `Discord`, `Telegram` は任意の補助チャネルにする
+- 複数チャネル設定は許可するが、最低基準は email のままにする
+
 ## 優先度
 ### Critical
 - node down
@@ -26,6 +32,9 @@ SSNP は、障害後に罰するだけでなく、運用者が健全性を維持
 ### Warning
 - sync lag
 - stale heartbeat
+- portal unreachable
+- local check execution failed
+- voting key expiry upcoming
 - certificate expiry upcoming
 - domain expiry upcoming
 
@@ -34,6 +43,31 @@ SSNP は、障害後に罰するだけでなく、運用者が健全性を維持
 - Agent 由来の状態情報は有用だが、外部証拠に優先してはならない
 - node-local reputation や peer-selection signal はオペレーター向け参考情報として保持してよいが、外部 probe 証拠を上書きしてはならない
 - 通知配送失敗自体も運用リスクとして観測可能であるべきである
+
+## Delivery Policy
+severity ごとの配送ルール:
+- `Critical`
+  - 即時送信する
+  - 将来の portal 実装で acknowledge されるか、状態が解消するまで 15 分ごとに再送する
+- `Warning`
+  - active への状態遷移時に 1 回だけ送信する
+  - 同じ node の同じ warning には 24 時間の cooldown をかける
+
+dedupe ルール:
+- `node_id + alert_code + severity` を dedupe key に使う
+
+初期通知対象:
+- heartbeat `stale`
+- heartbeat `failed`
+- `portal_unreachable`
+- `voting_key_expiry_risk`
+- `certificate_expiry_risk`
+- `local_check_execution_failed`
+
+delivery failure ルール:
+- delivery failure は portal の運用イベントとして記録する
+- delivery failure 自体を qualification failure として扱わない
+- program operations が追跡できるよう可視化する
 
 ## Program Agent Warning Inputs In v0.1
 Agent 由来 warning は、control-plane と operator 向けの補助 signal に留まる。

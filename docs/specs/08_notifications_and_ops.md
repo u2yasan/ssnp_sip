@@ -15,6 +15,12 @@ Reduce avoidable qualification loss and improve network continuity.
 ## Operational Principle
 SSNP should help operators remain healthy rather than only penalizing them after failure.
 
+## Delivery Channels
+MVP notification channel policy:
+- `email` is mandatory for every participating operator;
+- `webhook`, `Discord`, and `Telegram` are optional supplemental channels;
+- operators may configure multiple channels, but email remains the minimum baseline.
+
 ## Priority Levels
 ### Critical
 - node down
@@ -26,6 +32,9 @@ SSNP should help operators remain healthy rather than only penalizing them after
 ### Warning
 - sync lag
 - stale heartbeat
+- portal unreachable
+- local check execution failed
+- voting key expiry upcoming
 - certificate expiry upcoming
 - domain expiry upcoming
 
@@ -34,6 +43,31 @@ SSNP should help operators remain healthy rather than only penalizing them after
 - agent-originated status is useful, but not authoritative against external evidence;
 - node-local reputation or peer-selection signals may be retained as operator reference information, but must not override external probe evidence;
 - notification delivery failure should be observable as an operational risk.
+
+## Delivery Policy
+Severity-based delivery rules:
+- `Critical`
+  - send immediately;
+  - resend every 15 minutes until the condition clears or is acknowledged by a future portal implementation;
+- `Warning`
+  - send once on state transition to active;
+  - apply a 24-hour cooldown before sending the same warning again for the same node.
+
+Dedupe rule:
+- use `node_id + alert_code + severity` as the dedupe key.
+
+Initial notification target set:
+- heartbeat `stale`
+- heartbeat `failed`
+- `portal_unreachable`
+- `voting_key_expiry_risk`
+- `certificate_expiry_risk`
+- `local_check_execution_failed`
+
+Delivery failure rule:
+- record delivery failure as a portal operational event;
+- do not treat delivery failure itself as a qualification failure;
+- make delivery failure visible to program operations for follow-up.
 
 ## Program Agent Warning Inputs In v0.1
 Agent-originated warnings are supplemental control-plane and operator signals only.
