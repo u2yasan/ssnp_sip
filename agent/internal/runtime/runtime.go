@@ -25,6 +25,7 @@ import (
 	"github.com/u2yasan/ssnp_sip/agent/internal/logger"
 	"github.com/u2yasan/ssnp_sip/agent/internal/policy"
 	"github.com/u2yasan/ssnp_sip/agent/internal/state"
+	"github.com/u2yasan/ssnp_sip/agent/internal/symbol"
 )
 
 const (
@@ -41,6 +42,7 @@ type Agent struct {
 	cfg          config.Config
 	httpClient   *client.Client
 	policyClient *policy.Client
+	symbolClient *symbol.Client
 	privateKey   ed25519.PrivateKey
 	publicKey    ed25519.PublicKey
 	fingerprint  string
@@ -60,13 +62,14 @@ func NewAgent(cfg config.Config) (*Agent, error) {
 		cfg:          cfg,
 		httpClient:   client.New(cfg.PortalBaseURL, timeout),
 		policyClient: policy.NewClient(cfg.PortalBaseURL, timeout),
+		symbolClient: symbol.NewClient(cfg.MonitoredEndpoint, timeout),
 		privateKey:   privateKey,
 		publicKey:    publicKey,
 		fingerprint:  agentcrypto.Fingerprint(publicKey),
 	}, nil
 }
 
-func NewAgentWithClients(cfg config.Config, postClient *client.Client, policyClient *policy.Client) (*Agent, error) {
+func NewAgentWithClients(cfg config.Config, postClient *client.Client, policyClient *policy.Client, symbolClient *symbol.Client) (*Agent, error) {
 	privateKey, err := agentcrypto.LoadPrivateKey(cfg.AgentKeyPath)
 	if err != nil {
 		return nil, err
@@ -79,6 +82,7 @@ func NewAgentWithClients(cfg config.Config, postClient *client.Client, policyCli
 		cfg:          cfg,
 		httpClient:   postClient,
 		policyClient: policyClient,
+		symbolClient: symbolClient,
 		privateKey:   privateKey,
 		publicKey:    publicKey,
 		fingerprint:  agentcrypto.Fingerprint(publicKey),
@@ -368,15 +372,12 @@ func localCheckExecutionFailed(hw hardware.Result, cpuResult cpu.Result, diskRes
 }
 
 func (a *Agent) maybeEmitVotingKeyExpiryRisk(ctx context.Context, policyVersion string) error {
-	expiryRaw := strings.TrimSpace(a.cfg.VotingKeyExpiryAt)
-	if expiryRaw == "" {
+	status, err := a.symbolClient.HasVotingKeyExpiryRisk(ctx, votingKeyRiskWindow)
+	if err != nil {
+		logger.Log("warn", "runtime", "voting_key_expiry_check_skipped", a.cfg.NodeID, map[string]any{"error": err.Error()})
 		return nil
 	}
-	expiryAt, err := time.Parse(time.RFC3339, expiryRaw)
-	if err != nil {
-		return fmt.Errorf("invalid voting_key_expiry_at: %w", err)
-	}
-	if time.Until(expiryAt) >= votingKeyRiskWindow {
+	if !status.NearExpiry {
 		return nil
 	}
 	return a.markWarning(ctx, policyVersion, warningVotingKeyExpiryRisk)

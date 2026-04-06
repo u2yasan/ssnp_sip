@@ -100,7 +100,8 @@ Agent 由来 warning は、control-plane と operator 向けの補助 signal に
 
 v0.1 の入力源:
 - voting-key expiry reminders
-  - ローカル `config.yaml:voting_key_expiry_at` から導出する
+  - `monitored_endpoint` に対する Symbol node API read から導出する
+  - node API failure、JSON 異常、期待フィールド欠落、voting key data 空は silent no-op とする
 - TLS certificate expiry reminders
   - `monitored_endpoint` の leaf certificate expiry をローカルに確認して導出する
 - portal-unreachable warning

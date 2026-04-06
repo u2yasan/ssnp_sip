@@ -323,8 +323,10 @@ v0.1 の warning 生成ルール:
 - `local_check_execution_failed`
   - hardware / CPU / disk check が正常な pass/fail ではなく、実行不能だった時だけ送信する
 - `voting_key_expiry_risk`
-  - v0.1 では `config.yaml:voting_key_expiry_at` を入力源に使う
-  - 設定された expiry が 14 日以内なら送信する
+  - v0.1 では `monitored_endpoint` の Symbol node API を入力源に使う
+  - current node account と active voting key の寿命を chain data から導出する
+  - 最も早く切れる active voting key が 14 日以内なら送信する
+  - node API failure、JSON 異常、期待フィールド欠落、active voting key 不在は silent no-op とする
 - `certificate_expiry_risk`
   - `monitored_endpoint` が `https` の場合だけ使う
   - leaf certificate の `NotAfter` だけを見る
@@ -345,6 +347,7 @@ portal 側の agent interface は最小に保つ。
 - agent identity revoke / rotate
 - signed heartbeat 受信
 - signed warning telemetry 受信
+- accept した telemetry の history / latest view 読み出し
 - hardware simple check result 受信
 - 必要なら静的 agent policy metadata 配布
 

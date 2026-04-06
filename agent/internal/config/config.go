@@ -19,7 +19,6 @@ type Config struct {
 	HeartbeatJitterSecondsMax int    `yaml:"heartbeat_jitter_seconds_max"`
 	AgentVersion              string `yaml:"agent_version"`
 	EnrollmentGeneration      int    `yaml:"enrollment_generation"`
-	VotingKeyExpiryAt         string `yaml:"voting_key_expiry_at"`
 }
 
 func Load(path string) (Config, error) {
@@ -47,6 +46,8 @@ func (c Config) Validate() error {
 		return errors.New("config: agent_key_path is required")
 	case c.AgentPublicKeyPath == "":
 		return errors.New("config: agent_public_key_path is required")
+	case c.MonitoredEndpoint == "":
+		return errors.New("config: monitored_endpoint is required")
 	case c.StatePath == "":
 		return errors.New("config: state_path is required")
 	case c.TempDir == "":
