@@ -63,6 +63,7 @@ A node is **Qualified** for a reward period only if it satisfies all minimum con
 - finalized lag within threshold on at least 95% of valid probes;
 - chain synchronization within threshold on at least 95% of valid probes;
 - valid voting key for the relevant current epoch;
+- current Program Agent heartbeat;
 - no critical anomalies or confirmed abuse.
 
 ### Same Operator Group
@@ -84,24 +85,35 @@ SSNP consists of:
 - a public portal;
 - a registration and challenge-signature flow;
 - a multi-region external monitoring system;
-- an optional local agent for supplemental telemetry;
+- a Program Agent for heartbeat assurance and supplemental telemetry;
 - a scoring and ranking engine;
 - an operator notification system.
 
-External monitoring is the primary source of truth. Self-reported data is supplemental only.
+External monitoring is the primary source of truth. Program Agent data is supplemental and must not override contradictory external evidence.
 
 ## Registration
 
-An operator must submit:
+A participating operator must:
+
+- operate on Symbol mainnet;
+- hold a voting key valid for the current epoch;
+- expose a monitored endpoint;
+- run Program Agent;
+- agree to the program terms.
+
+An operator must also submit:
 
 - operator address;
 - node public identifier data;
 - voting key data sufficient for validation;
 - monitored endpoint information;
 - contact information for alerts;
-- signed challenge proving control.
+- signed challenge proving control;
+- Program Agent linkage data.
 
 A newly registered node enters an observation period of at least 72 hours before it can become Qualified.
+
+The priority is not raw hardware strength in isolation, but whether the node is currently able to continue voting safely and observably.
 
 ## Scoring Model
 
@@ -209,7 +221,8 @@ SSNP should provide registered operators with operational notifications, includi
 - voting key expiry reminders;
 - TLS certificate expiry reminders;
 - domain expiry reminders;
-- software update advisories.
+- software update advisories;
+- Program Agent heartbeat failure alerts.
 
 The purpose of notifications is to reduce avoidable qualification loss and improve network continuity.
 
@@ -233,6 +246,7 @@ Automated reward calculation and distribution, subject to governance approval.
 - external measurement is primary;
 - signatures are required at registration;
 - proxy or mirrored endpoint abuse should be monitored;
+- Program Agent telemetry must not override contradictory external probe evidence;
 - concentration detection must use multiple evidence sources rather than domain alone.
 
 ## Rationale
