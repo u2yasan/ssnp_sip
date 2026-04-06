@@ -67,6 +67,13 @@ func (s *Store) SaveCheckEvent(event CheckEvent) bool {
 	return true
 }
 
+func (s *Store) GetCheckEvent(eventID string) (CheckEvent, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	event, ok := s.checkEvents[eventID]
+	return event, ok
+}
+
 func (s *Store) AddTelemetryEvent(event TelemetryEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
