@@ -366,6 +366,96 @@ func TestAgentHeartbeatFailsOnBrokenStateFile(t *testing.T) {
 	}
 }
 
+func TestAgentEnrollFailsWhenPortalRejectsSignature(t *testing.T) {
+	tempDir := t.TempDir()
+	privateKeyPath, publicKeyPath := writeTestKeys(t, tempDir)
+
+	cfg := config.Config{
+		NodeID:                    "node-abc",
+		PortalBaseURL:             "http://mock.portal",
+		AgentKeyPath:              privateKeyPath,
+		AgentPublicKeyPath:        publicKeyPath,
+		MonitoredEndpoint:         "https://node-01.example.net:3001",
+		StatePath:                 filepath.Join(tempDir, "state.json"),
+		TempDir:                   tempDir,
+		RequestTimeoutSeconds:     5,
+		HeartbeatJitterSecondsMax: 0,
+		AgentVersion:              "1.0.0",
+		EnrollmentGeneration:      1,
+	}
+
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if r.URL.Path == "/api/v1/agent/enroll" {
+				return jsonResponse(http.StatusUnauthorized, `{"status":"error","error_code":"invalid_signature"}`)
+			}
+			return jsonResponse(http.StatusNotFound, `{"status":"error","error_code":"unknown"}`)
+		}),
+	}
+
+	agent, err := NewAgentWithClients(
+		cfg,
+		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
+		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAgentWithClients() error = %v", err)
+	}
+
+	err = agent.Enroll(context.Background(), "enroll-001")
+	if err == nil {
+		t.Fatal("Enroll() error = nil, want invalid signature rejection")
+	}
+	if !strings.Contains(err.Error(), "post /api/v1/agent/enroll failed") {
+		t.Fatalf("Enroll() error = %v, want enroll post failure", err)
+	}
+}
+
+func TestAgentHeartbeatFailsOnPortalTimeout(t *testing.T) {
+	tempDir := t.TempDir()
+	privateKeyPath, publicKeyPath := writeTestKeys(t, tempDir)
+
+	cfg := config.Config{
+		NodeID:                    "node-abc",
+		PortalBaseURL:             "http://mock.portal",
+		AgentKeyPath:              privateKeyPath,
+		AgentPublicKeyPath:        publicKeyPath,
+		MonitoredEndpoint:         "https://node-01.example.net:3001",
+		StatePath:                 filepath.Join(tempDir, "state.json"),
+		TempDir:                   tempDir,
+		RequestTimeoutSeconds:     5,
+		HeartbeatJitterSecondsMax: 0,
+		AgentVersion:              "1.0.0",
+		EnrollmentGeneration:      1,
+	}
+
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if r.URL.Path == "/api/v1/agent/heartbeat" {
+				return nil, context.DeadlineExceeded
+			}
+			return jsonResponse(http.StatusNotFound, `{"status":"error","error_code":"unknown"}`)
+		}),
+	}
+
+	agent, err := NewAgentWithClients(
+		cfg,
+		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
+		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAgentWithClients() error = %v", err)
+	}
+
+	err = agent.sendHeartbeat(context.Background())
+	if err == nil {
+		t.Fatal("sendHeartbeat() error = nil, want timeout failure")
+	}
+	if !strings.Contains(err.Error(), context.DeadlineExceeded.Error()) {
+		t.Fatalf("sendHeartbeat() error = %v, want deadline exceeded", err)
+	}
+}
+
 func writeTestKeys(t *testing.T, dir string) (string, string) {
 	t.Helper()
 
