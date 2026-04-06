@@ -1,5 +1,9 @@
 # SSNP Community Explainer (English)
 
+Language: English | [日本語](community_explainer_ja.md)
+
+Status: English explainer for external sharing.
+
 ## One-line summary
 
 SSNP is a **network stability support program** for high-quality Symbol voting nodes.

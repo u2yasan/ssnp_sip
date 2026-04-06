@@ -1,5 +1,9 @@
 # SIP-XXXX: Symbol Super Node Program (SSNP)
 
+Language: English | [日本語](ssnp_sip_ja.md)
+
+Status note: This English draft is the primary cross-language reference in this repository.
+
 ## Status
 Draft
 

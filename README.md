@@ -1,3 +1,5 @@
+Language: English | [日本語](README_ja.md)
+
 SSNP is a proposal to improve Symbol network stability by introducing
 performance-based ranking, anti-concentration rules, and operational alerts
 for voting nodes — without modifying existing harvesting rewards.
@@ -8,6 +10,14 @@ This repository contains draft SIP documents, diagrams, and discussion materials
 
 This repository contains a draft package for the proposed **Symbol Super Node Program (SSNP)**.
 
+## Language Policy
+
+- `README.md` is the default repository entry point and the English reference.
+- English SIP and specification files are the primary source for cross-language maintenance.
+- Japanese files are provided as translations or companion documents where available.
+- GitHub Issue and Pull Request templates are maintained in English only.
+- If English and Japanese texts diverge, resolve the mismatch explicitly rather than mixing both languages into one file.
+
 ## Contents
 
 - `README.md` — repository overview
@@ -16,11 +26,11 @@ This repository contains a draft package for the proposed **Symbol Super Node Pr
 - `.github/ISSUE_TEMPLATE/scoring.md` — scoring model discussion issue template
 - `.github/ISSUE_TEMPLATE/anti_concentration.md` — anti-concentration issue template
 - `.github/PULL_REQUEST_TEMPLATE.md` — pull request template
-- `sip/ssnp_sip_en.md` — English SIP draft
-- `sip/ssnp_sip_ja.md` — Japanese SIP draft
+- `sip/ssnp_sip_en.md` — English SIP draft, primary reference
+- `sip/ssnp_sip_ja.md` — Japanese SIP draft, translation/reference copy
 - `docs/community_explainer_en.md` — English community explainer
 - `docs/community_explainer_ja.md` — Japanese community explainer
-- `docs/faq_ja.md` — Japanese FAQ with objections and counters
+- `docs/faq_ja.md` — Japanese-only FAQ with objections and counters
 - `docs/specs/` — working basic-design specification set
 - `docs/diagrams/architecture.mmd` — Mermaid architecture diagram
 - `docs/diagrams/reward_flow.mmd` — Mermaid reward flow diagram

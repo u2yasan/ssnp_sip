@@ -1,5 +1,9 @@
 # SIP-XXXX: Symbol Super Node Program（SSNP）
 
+[English](ssnp_sip_en.md) | 日本語
+
+注記: この日本語版は参考用の翻訳文書であり、クロスランゲージ運用上の主参照は英語版とする。
+
 ## ステータス
 Draft
 

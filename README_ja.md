@@ -1,3 +1,5 @@
+[English](README.md) | 日本語
+
 SSNP は、既存のハーベスト報酬を変更することなく、Voting Node 向けの
 性能ベースランキング、寡占防止ルール、運用アラートを導入することで、
 Symbol ネットワークの安定性向上を目指す提案である。
@@ -9,6 +11,14 @@ Symbol ネットワークの安定性向上を目指す提案である。
 このリポジトリは、提案中の **Symbol Super Node Program (SSNP)** に関する
 ドラフト一式を収録している。
 
+## 言語運用方針
+
+- `README.md` をデフォルトの入口とし、英語を基準文書として扱う。
+- SIP と分割 spec は英語版を主系統とし、日本語版は翻訳または補助文書として維持する。
+- 日本語文書が存在しない場合は、英語文書を参照する。
+- GitHub の Issue / Pull Request テンプレートは英語のみで運用する。
+- 英語版と日本語版に差異が出た場合は、1ファイル混在ではなく、どちらを正とするかを明示して修正する。
+
 ## Contents
 
 - `README.md` — 英語版リポジトリ概要
@@ -17,11 +27,11 @@ Symbol ネットワークの安定性向上を目指す提案である。
 - `.github/ISSUE_TEMPLATE/scoring.md` — スコアリング議論用 Issue テンプレート
 - `.github/ISSUE_TEMPLATE/anti_concentration.md` — 寡占防止ルール議論用 Issue テンプレート
 - `.github/PULL_REQUEST_TEMPLATE.md` — Pull Request テンプレート
-- `sip/ssnp_sip_en.md` — 英語版 SIP ドラフト
-- `sip/ssnp_sip_ja.md` — 日本語版 SIP ドラフト
+- `sip/ssnp_sip_en.md` — 英語版 SIP ドラフト、主参照文書
+- `sip/ssnp_sip_ja.md` — 日本語版 SIP ドラフト、翻訳・参考版
 - `docs/community_explainer_en.md` — 英語版コミュニティ向け説明資料
 - `docs/community_explainer_ja.md` — 日本語版コミュニティ向け説明資料
-- `docs/faq_ja.md` — 反対論点とカウンターをまとめた日本語 FAQ
+- `docs/faq_ja.md` — 反対論点とカウンターをまとめた日本語専用 FAQ
 - `docs/specs/` — 基本設計 v0.1 の分割仕様
 - `docs/diagrams/architecture.mmd` — Mermaid アーキテクチャ図
 - `docs/diagrams/reward_flow.mmd` — Mermaid 報酬フロー図
