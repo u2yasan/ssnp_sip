@@ -234,6 +234,21 @@ The purpose of notifications is to reduce avoidable qualification loss and impro
 
 Initial deployment should use an external or separately approved program budget. A harvesting-reward reduction is out of scope for this draft.
 
+## Operating Responsibility
+
+The portal and program operations must be run under a clearly identified accountable governance or operating entity.
+
+AI agents and automation may be used for monitoring, notification, scoring, reporting, and routine operational workflows.
+However, final authority must remain with accountable human governance for:
+
+- fund disbursement approval;
+- Same Operator Group final classification;
+- operator disqualification;
+- policy exceptions;
+- appeals and dispute resolution.
+
+The design goal is low operational overhead, not removal of accountability.
+
 ## Deployment Plan
 
 ### Phase 1
@@ -271,7 +286,8 @@ A reference implementation may include:
 - scoring engine;
 - monitoring probes;
 - notification service;
-- public ranking UI.
+- public ranking UI;
+- automation workers and AI-assisted operational tooling.
 
 ## Conclusion
 
