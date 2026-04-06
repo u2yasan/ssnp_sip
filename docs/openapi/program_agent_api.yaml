@@ -346,6 +346,11 @@ components:
           type: array
           items:
             type: string
+            enum:
+              - portal_unreachable
+              - local_check_execution_failed
+              - voting_key_expiry_risk
+              - certificate_expiry_risk
         signature:
           type: string
     AcceptedResponse:

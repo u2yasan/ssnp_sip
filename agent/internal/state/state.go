@@ -7,9 +7,12 @@ import (
 )
 
 type State struct {
-	SequenceNumber      int    `json:"sequence_number"`
-	LastPolicyVersion   string `json:"last_policy_version"`
-	AgentKeyFingerprint string `json:"agent_key_fingerprint"`
+	SequenceNumber            int             `json:"sequence_number"`
+	LastPolicyVersion         string          `json:"last_policy_version"`
+	AgentKeyFingerprint       string          `json:"agent_key_fingerprint"`
+	ConsecutivePortalFailures int             `json:"consecutive_portal_failures"`
+	ActiveWarnings            map[string]bool `json:"active_warnings,omitempty"`
+	PendingWarnings           map[string]bool `json:"pending_warnings,omitempty"`
 }
 
 func Load(path string) (State, error) {

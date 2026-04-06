@@ -23,6 +23,12 @@ import (
 	"github.com/u2yasan/ssnp_sip/agent/internal/state"
 )
 
+const (
+	warningPortalUnreachable    = "portal_unreachable"
+	warningLocalCheckExecFailed = "local_check_execution_failed"
+	portalFailureThreshold      = 3
+)
+
 type Agent struct {
 	cfg          config.Config
 	httpClient   *client.Client
@@ -96,7 +102,14 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	for {
 		if err := a.sendHeartbeat(ctx); err != nil {
+			if stateErr := a.recordPortalFailure(); stateErr != nil {
+				logger.Log("error", "runtime", "state_save_failed", a.cfg.NodeID, map[string]any{"error": stateErr.Error()})
+			}
 			logger.Log("error", "runtime", "heartbeat_failed", a.cfg.NodeID, map[string]any{"error": err.Error()})
+		} else {
+			if err := a.handlePortalRecovery(ctx, pol.PolicyVersion); err != nil {
+				logger.Log("error", "runtime", "warning_flush_failed", a.cfg.NodeID, map[string]any{"error": err.Error()})
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -133,6 +146,11 @@ func (a *Agent) RunChecks(ctx context.Context, eventType, eventID string) error 
 	hw := hardware.Run(a.cfg.TempDir, pol.HardwareThresholds)
 	cpuResult := cpu.Run(ctx, pol.CPUProfile)
 	diskResult := disk.Run(ctx, a.cfg.TempDir, pol.DiskProfile)
+	if localCheckExecutionFailed(hw, cpuResult, diskResult) {
+		if err := a.markWarning(ctx, pol.PolicyVersion, warningLocalCheckExecFailed); err != nil {
+			logger.Log("error", "runtime", "telemetry_submit_failed", a.cfg.NodeID, map[string]any{"error": err.Error(), "warning_flag": warningLocalCheckExecFailed})
+		}
+	}
 	overall := hw.CPUCheckPassed &&
 		hw.RAMCheckPassed &&
 		hw.StorageSizeCheckPassed &&
@@ -195,12 +213,16 @@ func (a *Agent) SubmitTelemetry(ctx context.Context, warningFlags []string) erro
 		return err
 	}
 
+	return a.submitTelemetryWithPolicy(ctx, pol.PolicyVersion, warningFlags)
+}
+
+func (a *Agent) submitTelemetryWithPolicy(ctx context.Context, policyVersion string, warningFlags []string) error {
 	payload := map[string]any{
 		"schema_version":        "1",
 		"node_id":               a.cfg.NodeID,
 		"agent_key_fingerprint": a.fingerprint,
 		"telemetry_timestamp":   time.Now().UTC().Format(time.RFC3339),
-		"policy_version":        pol.PolicyVersion,
+		"policy_version":        policyVersion,
 		"warning_flags":         warningFlags,
 	}
 	sig, err := signMap(a.privateKey, payload)
@@ -215,7 +237,7 @@ func (a *Agent) SubmitTelemetry(ctx context.Context, warningFlags []string) erro
 
 	enc := json.NewEncoder(os.Stdout)
 	return enc.Encode(map[string]any{
-		"policy_version": pol.PolicyVersion,
+		"policy_version": policyVersion,
 		"warning_flags":  warningFlags,
 		"submitted":      true,
 	})
@@ -264,4 +286,69 @@ func signMap(privateKey ed25519.PrivateKey, payload map[string]any) (string, err
 		return "", err
 	}
 	return agentcrypto.Sign(privateKey, data), nil
+}
+
+func (a *Agent) recordPortalFailure() error {
+	st, err := state.Load(a.cfg.StatePath)
+	if err != nil {
+		return err
+	}
+	ensureWarningMaps(&st)
+	st.ConsecutivePortalFailures++
+	if st.ConsecutivePortalFailures >= portalFailureThreshold && !st.ActiveWarnings[warningPortalUnreachable] {
+		st.PendingWarnings[warningPortalUnreachable] = true
+	}
+	return state.Save(a.cfg.StatePath, st)
+}
+
+func (a *Agent) handlePortalRecovery(ctx context.Context, policyVersion string) error {
+	st, err := state.Load(a.cfg.StatePath)
+	if err != nil {
+		return err
+	}
+	ensureWarningMaps(&st)
+	st.ConsecutivePortalFailures = 0
+	if st.PendingWarnings[warningPortalUnreachable] && !st.ActiveWarnings[warningPortalUnreachable] {
+		if err := a.submitTelemetryWithPolicy(ctx, policyVersion, []string{warningPortalUnreachable}); err != nil {
+			return err
+		}
+		st.ActiveWarnings[warningPortalUnreachable] = true
+		delete(st.PendingWarnings, warningPortalUnreachable)
+	}
+	return state.Save(a.cfg.StatePath, st)
+}
+
+func (a *Agent) markWarning(ctx context.Context, policyVersion, warningFlag string) error {
+	st, err := state.Load(a.cfg.StatePath)
+	if err != nil {
+		return err
+	}
+	ensureWarningMaps(&st)
+	if st.ActiveWarnings[warningFlag] || st.PendingWarnings[warningFlag] {
+		return nil
+	}
+	if err := a.submitTelemetryWithPolicy(ctx, policyVersion, []string{warningFlag}); err != nil {
+		st.PendingWarnings[warningFlag] = true
+		_ = state.Save(a.cfg.StatePath, st)
+		return err
+	}
+	st.ActiveWarnings[warningFlag] = true
+	return state.Save(a.cfg.StatePath, st)
+}
+
+func ensureWarningMaps(st *state.State) {
+	if st.ActiveWarnings == nil {
+		st.ActiveWarnings = map[string]bool{}
+	}
+	if st.PendingWarnings == nil {
+		st.PendingWarnings = map[string]bool{}
+	}
+}
+
+func localCheckExecutionFailed(hw hardware.Result, cpuResult cpu.Result, diskResult disk.Result) bool {
+	return hw.VisibleCPUThreads == 0 ||
+		hw.VisibleMemoryBytes == 0 ||
+		hw.VisibleStorageBytes == 0 ||
+		(cpuResult.NormalizedScore == 0 && !cpuResult.Passed) ||
+		(diskResult.MeasuredIOPS == 0 && !diskResult.Passed)
 }
