@@ -1,0 +1,433 @@
+openapi: 3.1.0
+info:
+  title: SSNP Program Agent API
+  version: 0.1.0
+  summary: Portal-side API contract for SSNP Program Agent
+  description: |
+    Minimal v0.1 API for agent enrollment, heartbeat, hardware checks,
+    supplemental telemetry, and policy retrieval.
+servers:
+  - url: https://ssnp.example.org
+    description: Example production endpoint
+tags:
+  - name: Agent
+    description: Program Agent endpoints
+paths:
+  /api/v1/agent/enroll:
+    post:
+      tags: [Agent]
+      summary: Enroll an agent identity for a registered node
+      operationId: enrollAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollRequest"
+      responses:
+        "200":
+          description: Agent enrollment accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/v1/agent/heartbeat:
+    post:
+      tags: [Agent]
+      summary: Submit a signed heartbeat
+      operationId: submitHeartbeat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HeartbeatRequest"
+      responses:
+        "200":
+          description: Heartbeat accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/v1/agent/checks:
+    post:
+      tags: [Agent]
+      summary: Submit a hardware simple check result
+      operationId: submitHardwareCheck
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HardwareCheckRequest"
+      responses:
+        "200":
+          description: Hardware check accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HardwareCheckResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/v1/agent/telemetry:
+    post:
+      tags: [Agent]
+      summary: Submit supplemental warning telemetry
+      operationId: submitTelemetry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelemetryRequest"
+      responses:
+        "200":
+          description: Telemetry accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/v1/agent/policy:
+    get:
+      tags: [Agent]
+      summary: Fetch active policy/profile metadata
+      operationId: getAgentPolicy
+      parameters:
+        - name: node_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: agent_key_fingerprint
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Active policy returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/ErrorResponse"
+components:
+  responses:
+    ErrorResponse:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    EnrollRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - enrollment_challenge_id
+        - agent_public_key
+        - agent_version
+        - signature
+      properties:
+        node_id:
+          type: string
+        enrollment_challenge_id:
+          type: string
+        agent_public_key:
+          type: string
+        agent_version:
+          type: string
+        signature:
+          type: string
+    EnrollResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - node_id
+        - agent_key_fingerprint
+        - policy_version
+      properties:
+        status:
+          type: string
+          const: ok
+        node_id:
+          type: string
+        agent_key_fingerprint:
+          type: string
+        policy_version:
+          type: string
+    HeartbeatRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - agent_key_fingerprint
+        - heartbeat_timestamp
+        - sequence_number
+        - agent_version
+        - enrollment_generation
+        - local_observation_flags
+        - signature
+      properties:
+        node_id:
+          type: string
+        agent_key_fingerprint:
+          type: string
+        heartbeat_timestamp:
+          type: string
+          format: date-time
+        sequence_number:
+          type: integer
+          minimum: 0
+        agent_version:
+          type: string
+        enrollment_generation:
+          type: integer
+          minimum: 1
+        local_observation_flags:
+          type: array
+          items:
+            type: string
+        signature:
+          type: string
+    HardwareCheckRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - node_id
+        - agent_key_fingerprint
+        - event_type
+        - event_id
+        - policy_version
+        - cpu_profile_id
+        - disk_profile_id
+        - checked_at
+        - cpu_check_passed
+        - disk_check_passed
+        - ram_check_passed
+        - storage_size_check_passed
+        - ssd_check_passed
+        - cpu_load_test_passed
+        - overall_passed
+        - agent_version
+        - signature
+      properties:
+        schema_version:
+          type: string
+          const: "1"
+        node_id:
+          type: string
+        agent_key_fingerprint:
+          type: string
+        event_type:
+          type: string
+          enum: [registration, voting_key_renewal, recheck]
+        event_id:
+          type: string
+        policy_version:
+          type: string
+        cpu_profile_id:
+          type: string
+        disk_profile_id:
+          type: string
+        checked_at:
+          type: string
+          format: date-time
+        cpu_check_passed:
+          type: boolean
+        disk_check_passed:
+          type: boolean
+        ram_check_passed:
+          type: boolean
+        storage_size_check_passed:
+          type: boolean
+        ssd_check_passed:
+          type: boolean
+        cpu_load_test_passed:
+          type: boolean
+        overall_passed:
+          type: boolean
+        agent_version:
+          type: string
+        normalized_cpu_score:
+          type: number
+        measured_iops:
+          type: number
+        measured_latency_p95:
+          type: number
+        visible_cpu_threads:
+          type: integer
+          minimum: 0
+        visible_memory_bytes:
+          type: integer
+          minimum: 0
+        visible_storage_bytes:
+          type: integer
+          minimum: 0
+        error_code:
+          type: string
+        error_detail:
+          type: string
+        signature:
+          type: string
+    TelemetryRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - node_id
+        - agent_key_fingerprint
+        - telemetry_timestamp
+        - policy_version
+        - warning_flags
+        - signature
+      properties:
+        schema_version:
+          type: string
+          const: "1"
+        node_id:
+          type: string
+        agent_key_fingerprint:
+          type: string
+        telemetry_timestamp:
+          type: string
+          format: date-time
+        policy_version:
+          type: string
+        warning_flags:
+          type: array
+          items:
+            type: string
+        signature:
+          type: string
+    AcceptedResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - node_id
+        - received_at
+      properties:
+        status:
+          type: string
+          const: accepted
+        node_id:
+          type: string
+        received_at:
+          type: string
+          format: date-time
+    HardwareCheckResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - node_id
+        - event_id
+        - overall_passed
+        - received_at
+      properties:
+        status:
+          type: string
+          const: accepted
+        node_id:
+          type: string
+        event_id:
+          type: string
+        overall_passed:
+          type: boolean
+        received_at:
+          type: string
+          format: date-time
+    PolicyResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - policy_version
+        - cpu_profile_id
+        - disk_profile_id
+        - heartbeat_interval_seconds
+      properties:
+        policy_version:
+          type: string
+        cpu_profile_id:
+          type: string
+        disk_profile_id:
+          type: string
+        heartbeat_interval_seconds:
+          type: integer
+          minimum: 1
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - error_code
+        - message
+      properties:
+        status:
+          type: string
+          const: error
+        error_code:
+          type: string
+          enum:
+            - invalid_schema_version
+            - missing_required_field
+            - invalid_signature
+            - unknown_node_id
+            - agent_not_enrolled
+            - policy_version_mismatch
+            - invalid_profile_id
+            - duplicate_event_id
+            - invalid_overall_passed
+            - stale_timestamp
+            - rate_limited
+        message:
+          type: string

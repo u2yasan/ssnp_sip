@@ -32,6 +32,7 @@ Qualified nodes are sorted in descending order by total score.
 
 ## Measurement Principles
 - CPU claims are not a core score input;
+- hardware simple check status is not a ranking multiplier;
 - ICMP ping is not a core score input;
 - single-region probe results must not dominate the score;
 - finalization and sync tracking matter more than "fast response" optics.

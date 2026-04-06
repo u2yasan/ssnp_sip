@@ -15,6 +15,7 @@
 - creating a CPU benchmark ranking;
 - treating ICMP ping as a primary score input;
 - making pass/fail decisions from a single monitoring point;
+- exposing detailed hardware specification values as a public participation condition;
 - paying all voting nodes equally regardless of quality;
 - introducing protocol-level enforcement or on-chain punishment.
 
@@ -22,6 +23,7 @@
 These should be cut from the initial design rather than debated endlessly:
 
 - self-reported CPU benchmark claims without external verification;
+- using raw RAM / CPU / HDD values as public ranking data;
 - ICMP ping as a headline quality metric;
 - single-region single-point pass/fail judgment;
 - vague "fast node" claims without finalization or sync evidence.
@@ -29,3 +31,6 @@ These should be cut from the initial design rather than debated endlessly:
 ## Design Rule
 If a metric does not improve confidence in current voting continuity,
 it should not be promoted into the core qualification path.
+
+Hardware capability checks may be used only as a registration or voting-key-renewal gate,
+not as a ranking axis.
