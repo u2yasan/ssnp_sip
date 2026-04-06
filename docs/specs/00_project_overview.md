@@ -1,5 +1,7 @@
 # 00. Project Overview
 
+Language: English | [日本語](../specs_ja/00_project_overview.md)
+
 ## Document Set
 This directory is the working specification set for **Symbol Super Node Program (SSNP) Basic Design v0.1**.
 
