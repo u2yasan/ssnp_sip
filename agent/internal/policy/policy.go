@@ -83,6 +83,13 @@ func NewClient(baseURL string, timeout time.Duration) *Client {
 	}
 }
 
+func NewClientWithHTTP(baseURL string, httpClient *http.Client) *Client {
+	return &Client{
+		baseURL: strings.TrimRight(baseURL, "/"),
+		http:    httpClient,
+	}
+}
+
 func (c *Client) Fetch(ctx context.Context, nodeID, fingerprint string) (Response, error) {
 	var out Response
 	endpoint := c.baseURL + "/api/v1/agent/policy"

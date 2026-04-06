@@ -22,6 +22,13 @@ func New(baseURL string, timeout time.Duration) *Client {
 	}
 }
 
+func NewWithHTTPClient(baseURL string, httpClient *http.Client) *Client {
+	return &Client{
+		baseURL: strings.TrimRight(baseURL, "/"),
+		http:    httpClient,
+	}
+}
+
 func (c *Client) PostJSON(ctx context.Context, path string, payload any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {

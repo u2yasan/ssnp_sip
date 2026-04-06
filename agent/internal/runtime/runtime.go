@@ -52,6 +52,25 @@ func NewAgent(cfg config.Config) (*Agent, error) {
 	}, nil
 }
 
+func NewAgentWithClients(cfg config.Config, postClient *client.Client, policyClient *policy.Client) (*Agent, error) {
+	privateKey, err := agentcrypto.LoadPrivateKey(cfg.AgentKeyPath)
+	if err != nil {
+		return nil, err
+	}
+	publicKey, err := agentcrypto.LoadPublicKey(cfg.AgentPublicKeyPath)
+	if err != nil {
+		return nil, err
+	}
+	return &Agent{
+		cfg:          cfg,
+		httpClient:   postClient,
+		policyClient: policyClient,
+		privateKey:   privateKey,
+		publicKey:    publicKey,
+		fingerprint:  agentcrypto.Fingerprint(publicKey),
+	}, nil
+}
+
 func (a *Agent) Run(ctx context.Context) error {
 	pol, err := a.policyClient.Fetch(ctx, a.cfg.NodeID, a.fingerprint)
 	if err != nil {
