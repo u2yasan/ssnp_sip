@@ -1,0 +1,11 @@
+node_id: "node-abc"
+portal_base_url: "https://ssnp.example.org"
+agent_key_path: "./keys/agent_private_key.pem"
+agent_public_key_path: "./keys/agent_public_key.pem"
+monitored_endpoint: "https://node-01.example.net:3001"
+state_path: "./state.json"
+temp_dir: "/tmp"
+request_timeout_seconds: 15
+heartbeat_jitter_seconds_max: 10
+agent_version: "1.0.0"
+enrollment_generation: 1
