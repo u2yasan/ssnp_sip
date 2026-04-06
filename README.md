@@ -20,6 +20,7 @@ This repository contains a draft package for the proposed **Symbol Super Node Pr
 - `sip/ssnp_sip_ja.md` — Japanese SIP draft
 - `docs/community_explainer_en.md` — English community explainer
 - `docs/community_explainer_ja.md` — Japanese community explainer
+- `docs/faq_ja.md` — Japanese FAQ with objections and counters
 - `docs/diagrams/architecture.mmd` — Mermaid architecture diagram
 - `docs/diagrams/reward_flow.mmd` — Mermaid reward flow diagram
 - `docs/diagrams/anti_concentration.mmd` — Mermaid anti-concentration diagram

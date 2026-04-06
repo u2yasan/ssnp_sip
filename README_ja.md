@@ -21,6 +21,7 @@ Symbol ネットワークの安定性向上を目指す提案である。
 - `sip/ssnp_sip_ja.md` — 日本語版 SIP ドラフト
 - `docs/community_explainer_en.md` — 英語版コミュニティ向け説明資料
 - `docs/community_explainer_ja.md` — 日本語版コミュニティ向け説明資料
+- `docs/faq_ja.md` — 反対論点とカウンターをまとめた日本語 FAQ
 - `docs/diagrams/architecture.mmd` — Mermaid アーキテクチャ図
 - `docs/diagrams/reward_flow.mmd` — Mermaid 報酬フロー図
 - `docs/diagrams/anti_concentration.mmd` — Mermaid 寡占防止図
