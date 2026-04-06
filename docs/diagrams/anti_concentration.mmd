@@ -1,0 +1,8 @@
+flowchart TB
+    A[Ranked Nodes] --> B{Same Operator Group already selected?}
+    B -- Yes --> X[Skip and backfill]
+    B -- No --> C{Same Registrable Domain already selected?}
+    C -- Yes --> X
+    C -- No --> D{Same Managed Provider already selected?}
+    D -- Yes --> X
+    D -- No --> E[Select as Reward Eligible]

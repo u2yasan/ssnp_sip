@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="560" viewBox="0 0 1000 560">
+<rect width="1000" height="560" fill="white"/>
+<g font-family="Arial, sans-serif" font-size="18" fill="#111" stroke="#333" stroke-width="2">
+<rect x="80" y="60" width="220" height="60" rx="10" fill="#f6f6f6"/><text x="190" y="95" text-anchor="middle">Ranked Qualified Nodes</text>
+<rect x="380" y="60" width="260" height="60" rx="10" fill="#f6f6f6"/><text x="510" y="95" text-anchor="middle">Same Operator Group?</text>
+<rect x="380" y="180" width="260" height="60" rx="10" fill="#f6f6f6"/><text x="510" y="215" text-anchor="middle">Same Domain?</text>
+<rect x="380" y="300" width="260" height="60" rx="10" fill="#f6f6f6"/><text x="510" y="335" text-anchor="middle">Same Managed Provider?</text>
+<rect x="760" y="120" width="180" height="60" rx="10" fill="#f6f6f6"/><text x="850" y="155" text-anchor="middle">Skip / Backfill</text>
+<rect x="760" y="320" width="180" height="60" rx="10" fill="#f6f6f6"/><text x="850" y="355" text-anchor="middle">Reward Eligible</text>
+<line x1="300" y1="90" x2="380" y2="90"/>
+<line x1="510" y1="120" x2="510" y2="180"/>
+<line x1="510" y1="240" x2="510" y2="300"/>
+<line x1="640" y1="90" x2="760" y2="150"/>
+<line x1="640" y1="210" x2="760" y2="150"/>
+<line x1="640" y1="330" x2="760" y2="150"/>
+<line x1="640" y1="330" x2="760" y2="350"/>
+<text x="655" y="82" font-size="16">Yes</text>
+<text x="655" y="202" font-size="16">Yes</text>
+<text x="655" y="322" font-size="16">No</text>
+</g></svg>

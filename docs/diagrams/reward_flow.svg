@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="620" viewBox="0 0 1100 620">
+<rect width="1100" height="620" fill="white"/>
+<g font-family="Arial, sans-serif" font-size="18" fill="#111" stroke="#333" stroke-width="2">
+<rect x="60" y="40" width="220" height="60" rx="10" fill="#f6f6f6"/><text x="170" y="75" text-anchor="middle">All Registered Nodes</text>
+<rect x="60" y="150" width="220" height="60" rx="10" fill="#f6f6f6"/><text x="170" y="185" text-anchor="middle">Qualified Check</text>
+<rect x="380" y="150" width="220" height="60" rx="10" fill="#f6f6f6"/><text x="490" y="185" text-anchor="middle">Score Ranking</text>
+<rect x="700" y="150" width="260" height="60" rx="10" fill="#f6f6f6"/><text x="830" y="185" text-anchor="middle">Anti-Concentration Filter</text>
+<rect x="700" y="270" width="260" height="60" rx="10" fill="#f6f6f6"/><text x="830" y="305" text-anchor="middle">Top 50 Maximum</text>
+<rect x="700" y="390" width="260" height="60" rx="10" fill="#f6f6f6"/><text x="830" y="425" text-anchor="middle">Participation Adjustment</text>
+<rect x="380" y="510" width="220" height="60" rx="10" fill="#f6f6f6"/><text x="490" y="545" text-anchor="middle">Reserve Pool</text>
+<rect x="700" y="510" width="260" height="60" rx="10" fill="#f6f6f6"/><text x="830" y="545" text-anchor="middle">Rank-band Allocation</text>
+<line x1="170" y1="100" x2="170" y2="150"/>
+<line x1="280" y1="180" x2="380" y2="180"/>
+<line x1="600" y1="180" x2="700" y2="180"/>
+<line x1="830" y1="210" x2="830" y2="270"/>
+<line x1="830" y1="330" x2="830" y2="390"/>
+<line x1="830" y1="450" x2="830" y2="510"/>
+<line x1="780" y1="420" x2="600" y2="540"/>
+<text x="90" y="245" font-size="16">Not qualified -> excluded</text>
+<text x="690" y="485" font-size="16">Undistributed part retained</text>
+</g></svg>

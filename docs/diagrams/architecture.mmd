@@ -1,0 +1,13 @@
+flowchart LR
+    A[Operator] --> B[Registration Portal]
+    B --> C[Challenge Signature Verification]
+    C --> D[Program API]
+    D --> E[Qualified Node Registry]
+    D --> F[Scoring Engine]
+    G[Multi-region Probes] --> F
+    H[Optional Node Agent] --> F
+    F --> I[Public Ranking]
+    F --> J[Reward Eligibility Filter]
+    J --> K[Daily Reward Distribution]
+    F --> L[Alert Engine]
+    L --> M[Email / Discord / Dashboard Alerts]

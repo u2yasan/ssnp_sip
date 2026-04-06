@@ -1,0 +1,11 @@
+flowchart TD
+    A[All Registered Nodes] --> B{Qualified?}
+    B -- No --> X[Not Reward Eligible]
+    B -- Yes --> C[Score Ranking]
+    C --> D[Anti-Concentration Filter]
+    D --> E[Top 50 Max]
+    E --> F[Participation Adjustment by Qualified Count]
+    F --> G[Distributed Reward Pool]
+    G --> H[Rank Bands 1-5 / 6-10 / 11-20 / 21-35 / 36-50]
+    H --> I[Per-node Reward Allocation]
+    F --> J[Reserve Pool]
