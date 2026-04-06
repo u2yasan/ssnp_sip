@@ -6,12 +6,13 @@
 3. What evidence standard is sufficient for Same Operator Group classification?
 4. What notification channels should be mandatory in the MVP?
 5. Is Program Agent mandatory only for v0.1 MVP, or permanently required beyond v0.1?
+6. When should live chain integration replace local config input for voting-key expiry detection?
 
 ## Secondary
-6. Should ASN diversity be used as a hard cap or a scoring factor only?
-7. What transparency level should raw scoring data have?
-8. What reserve policy should be applied to undistributed rewards?
-9. How much raw endpoint and probe data can be disclosed without creating operator risk?
+7. Should ASN diversity be used as a hard cap or a scoring factor only?
+8. What transparency level should raw scoring data have?
+9. What reserve policy should be applied to undistributed rewards?
+10. How much raw endpoint and probe data can be disclosed without creating operator risk?
 
 ## Out of Scope for Initial Version
 - fee-based SSNP funding without separate governance approval

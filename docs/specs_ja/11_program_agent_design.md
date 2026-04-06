@@ -304,6 +304,33 @@ Program Agent は警告生成のためにローカルチェックをしてよい
 - portal 指示による任意コマンド実行
 - オペレーター承認なしの update 自動適用
 
+## Warning Telemetry Semantics
+v0.1 の telemetry warning set は次の 4 種に固定する。
+- `portal_unreachable`
+- `local_check_execution_failed`
+- `voting_key_expiry_risk`
+- `certificate_expiry_risk`
+
+ルール:
+- warning telemetry は補助情報に留まり、外部 probe 証拠を上書きしてはならない
+- warning telemetry を ranking input に使ってはならない
+- warning telemetry を cryptographic truth source と説明してはならない
+
+v0.1 の warning 生成ルール:
+- `portal_unreachable`
+  - portal 通信失敗が連続 3 回に達したら pending にする
+  - portal 通信回復後に 1 回だけ送信する
+- `local_check_execution_failed`
+  - hardware / CPU / disk check が正常な pass/fail ではなく、実行不能だった時だけ送信する
+- `voting_key_expiry_risk`
+  - v0.1 では `config.yaml:voting_key_expiry_at` を入力源に使う
+  - 設定された expiry が 14 日以内なら送信する
+- `certificate_expiry_risk`
+  - `monitored_endpoint` が `https` の場合だけ使う
+  - leaf certificate の `NotAfter` だけを見る
+  - expiry が 14 日以内なら送信する
+  - これは期限確認専用であり、PKI trust validation ではない
+
 ## Portal API 契約
 portal 側の agent interface は最小に保つ。
 - agent enroll
@@ -456,6 +483,20 @@ success response:
   "received_at": "2026-04-06T10:40:00Z"
 }
 ```
+
+### `GET /api/v1/agent/telemetry`
+目的:
+- オペレーターと program operations のために保存済み warning telemetry を返す。
+
+query parameter:
+- 任意の `node_id`
+- 任意の `warning_code`
+- `node_id + warning_code` ごとの最新状態だけ返す `view=latest`
+
+response 挙動:
+- default view は telemetry history item を返す
+- `view=latest` は in-memory の latest view だけを返す
+- portal stub は v0.1 では telemetry を永続化しない
 
 ### `GET /api/v1/agent/policy`
 目的:

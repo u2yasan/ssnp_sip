@@ -34,3 +34,21 @@ SSNP は、障害後に罰するだけでなく、運用者が健全性を維持
 - Agent 由来の状態情報は有用だが、外部証拠に優先してはならない
 - node-local reputation や peer-selection signal はオペレーター向け参考情報として保持してよいが、外部 probe 証拠を上書きしてはならない
 - 通知配送失敗自体も運用リスクとして観測可能であるべきである
+
+## Program Agent Warning Inputs In v0.1
+Agent 由来 warning は、control-plane と operator 向けの補助 signal に留まる。
+
+v0.1 の入力源:
+- voting-key expiry reminders
+  - ローカル `config.yaml:voting_key_expiry_at` から導出する
+- TLS certificate expiry reminders
+  - `monitored_endpoint` の leaf certificate expiry をローカルに確認して導出する
+- portal-unreachable warning
+  - agent-to-portal 通信失敗の連続から導出する
+- Program Agent heartbeat failure alerts
+  - agent 自身の warning telemetry ではなく、portal 側の stale/failed heartbeat 観測から導出する
+
+運用上の区別:
+- `portal_unreachable` は agent-to-portal control-plane warning である
+- Program Agent heartbeat failure は portal が観測する liveness state である
+- この 2 つを 1 つの運用カテゴリに潰してはならない

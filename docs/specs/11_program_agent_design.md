@@ -302,6 +302,33 @@ Forbidden local behaviors:
 - executing arbitrary commands from portal instructions;
 - downloading and applying updates without operator approval.
 
+## Warning Telemetry Semantics
+The v0.1 telemetry warning set is fixed to:
+- `portal_unreachable`
+- `local_check_execution_failed`
+- `voting_key_expiry_risk`
+- `certificate_expiry_risk`
+
+Rules:
+- warning telemetry is supplemental only and must not override external probe evidence;
+- warning telemetry must not be used as a ranking input;
+- warning telemetry must not be described as a cryptographic truth source.
+
+v0.1 warning generation rules:
+- `portal_unreachable`
+  - mark pending after 3 consecutive portal communication failures;
+  - emit once after portal communication recovers;
+- `local_check_execution_failed`
+  - emit only when hardware / CPU / disk checks are execution failures, not normal pass/fail results;
+- `voting_key_expiry_risk`
+  - use `config.yaml:voting_key_expiry_at` as the v0.1 input source;
+  - emit when the configured expiry is within 14 days;
+- `certificate_expiry_risk`
+  - use `monitored_endpoint` only when it is `https`;
+  - inspect the leaf certificate `NotAfter` timestamp only;
+  - emit when the expiry is within 14 days;
+  - treat this as expiry metadata inspection only, not PKI trust validation.
+
 ## Portal API Contract
 The portal-side agent interface should stay minimal:
 - enroll agent;
@@ -454,6 +481,20 @@ Success response:
   "received_at": "2026-04-06T10:40:00Z"
 }
 ```
+
+### `GET /api/v1/agent/telemetry`
+Purpose:
+- return stored warning telemetry for operator and program operations.
+
+Query parameters:
+- optional `node_id`;
+- optional `warning_code`;
+- optional `view=latest` to return only the latest warning per `node_id + warning_code`.
+
+Response behavior:
+- default view returns telemetry history items;
+- `view=latest` returns the current in-memory latest view only;
+- the portal stub keeps telemetry in memory only and does not provide persistence in v0.1.
 
 ### `GET /api/v1/agent/policy`
 Purpose:
