@@ -3,11 +3,14 @@ package runtime
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -25,11 +28,13 @@ import (
 )
 
 const (
-	warningPortalUnreachable    = "portal_unreachable"
-	warningLocalCheckExecFailed = "local_check_execution_failed"
-	warningVotingKeyExpiryRisk  = "voting_key_expiry_risk"
-	portalFailureThreshold      = 3
-	votingKeyRiskWindow         = 14 * 24 * time.Hour
+	warningPortalUnreachable     = "portal_unreachable"
+	warningLocalCheckExecFailed  = "local_check_execution_failed"
+	warningVotingKeyExpiryRisk   = "voting_key_expiry_risk"
+	warningCertificateExpiryRisk = "certificate_expiry_risk"
+	portalFailureThreshold       = 3
+	votingKeyRiskWindow          = 14 * 24 * time.Hour
+	certificateRiskWindow        = 14 * 24 * time.Hour
 )
 
 type Agent struct {
@@ -96,6 +101,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	if err := a.maybeEmitVotingKeyExpiryRisk(ctx, pol.PolicyVersion); err != nil {
 		logger.Log("error", "runtime", "telemetry_submit_failed", a.cfg.NodeID, map[string]any{"error": err.Error(), "warning_flag": warningVotingKeyExpiryRisk})
+	}
+	if err := a.maybeEmitCertificateExpiryRisk(ctx, pol.PolicyVersion); err != nil {
+		logger.Log("error", "runtime", "telemetry_submit_failed", a.cfg.NodeID, map[string]any{"error": err.Error(), "warning_flag": warningCertificateExpiryRisk})
 	}
 
 	jitter := time.Duration(rand.Intn(a.cfg.HeartbeatJitterSecondsMax+1)) * time.Second
@@ -372,4 +380,50 @@ func (a *Agent) maybeEmitVotingKeyExpiryRisk(ctx context.Context, policyVersion 
 		return nil
 	}
 	return a.markWarning(ctx, policyVersion, warningVotingKeyExpiryRisk)
+}
+
+func (a *Agent) maybeEmitCertificateExpiryRisk(ctx context.Context, policyVersion string) error {
+	endpoint := strings.TrimSpace(a.cfg.MonitoredEndpoint)
+	if endpoint == "" {
+		return nil
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return fmt.Errorf("invalid monitored_endpoint: %w", err)
+	}
+	if parsed.Scheme != "https" {
+		return nil
+	}
+	notAfter, ok := fetchLeafCertificateNotAfter(parsed)
+	if !ok {
+		return nil
+	}
+	if time.Until(notAfter) >= certificateRiskWindow {
+		return nil
+	}
+	return a.markWarning(ctx, policyVersion, warningCertificateExpiryRisk)
+}
+
+func fetchLeafCertificateNotAfter(endpoint *url.URL) (time.Time, bool) {
+	host := endpoint.Hostname()
+	if host == "" {
+		return time.Time{}, false
+	}
+	port := endpoint.Port()
+	if port == "" {
+		port = "443"
+	}
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", net.JoinHostPort(host, port), &tls.Config{
+		InsecureSkipVerify: true, //nolint:gosec // v0.1 only checks expiry metadata
+		ServerName:         host,
+	})
+	if err != nil {
+		return time.Time{}, false
+	}
+	defer conn.Close()
+	state := conn.ConnectionState()
+	if len(state.PeerCertificates) == 0 {
+		return time.Time{}, false
+	}
+	return state.PeerCertificates[0].NotAfter, true
 }

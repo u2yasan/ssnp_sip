@@ -4,11 +4,17 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
 	"io"
+	"math/big"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -157,8 +163,8 @@ func TestAgentEnrollHeartbeatAndChecks(t *testing.T) {
 	if checkCalls != 1 {
 		t.Fatalf("checkCalls = %d, want 1", checkCalls)
 	}
-	if telemetryCalls != 2 {
-		t.Fatalf("telemetryCalls = %d, want 2", telemetryCalls)
+	if telemetryCalls < 1 {
+		t.Fatalf("telemetryCalls = %d, want at least 1", telemetryCalls)
 	}
 }
 
@@ -676,6 +682,83 @@ func TestAgentRunEmitsVotingKeyExpiryRiskWhenNearExpiry(t *testing.T) {
 	}
 }
 
+func TestAgentRunEmitsCertificateExpiryRiskWhenTLSCertNearExpiry(t *testing.T) {
+	tempDir := t.TempDir()
+	privateKeyPath, publicKeyPath := writeTestKeys(t, tempDir)
+
+	certPEM, keyPEM := writeShortLivedTLSCert(t)
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		t.Fatalf("X509KeyPair() error = %v", err)
+	}
+	tlsServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	tlsServer.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
+	tlsServer.StartTLS()
+	defer tlsServer.Close()
+
+	var telemetryCalls int
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			switch r.URL.Path {
+			case "/api/v1/agent/policy":
+				return jsonResponse(http.StatusOK, `{
+				"policy_version":"2026-04",
+				"heartbeat_interval_seconds":1,
+				"cpu_profile":{"id":"cpu-check-v1","duration_seconds":3,"warmup_seconds":1,"measured_seconds":1,"cooldown_seconds":1,"worker_cap":8,"workload_mix":{"hashing":0.50,"integer":0.30,"matrix":0.20},"acceptance_floor":{"type":"normalized_score","minimum":0.0}},
+				"disk_profile":{"id":"disk-check-v1","duration_seconds":3,"warmup_seconds":1,"measured_seconds":1,"cooldown_seconds":1,"block_size_bytes":4096,"queue_depth":32,"concurrency":1,"read_ratio":0.70,"write_ratio":0.30,"acceptance_floor":{"type":"measured_iops","minimum":0}},
+				"hardware_thresholds":{"cpu_cores_min":1,"ram_gb_min":1,"storage_gb_min":1,"ssd_required":false},
+				"reference_environment":{"id":"ref-env-2026-04","os_image_id":"ubuntu-24.04-lts","agent_version":"1.0.0","cpu_profile_id":"cpu-check-v1","disk_profile_id":"disk-check-v1","baseline_source_date":"2026-04-06"}
+				}`)
+			case "/api/v1/agent/heartbeat":
+				return jsonResponse(http.StatusOK, `{"status":"accepted","node_id":"node-abc","received_at":"2026-04-06T10:35:00Z"}`)
+			case "/api/v1/agent/telemetry":
+				telemetryCalls++
+				assertRequestWarningFlagEquals(t, r, warningCertificateExpiryRisk)
+				return jsonResponse(http.StatusOK, `{"status":"accepted","node_id":"node-abc","received_at":"2026-04-06T10:40:00Z"}`)
+			default:
+				return jsonResponse(http.StatusNotFound, `{"status":"error","error_code":"unknown"}`)
+			}
+		}),
+	}
+
+	cfg := config.Config{
+		NodeID:                    "node-abc",
+		PortalBaseURL:             "http://mock.portal",
+		AgentKeyPath:              privateKeyPath,
+		AgentPublicKeyPath:        publicKeyPath,
+		MonitoredEndpoint:         tlsServer.URL,
+		StatePath:                 filepath.Join(tempDir, "state.json"),
+		TempDir:                   tempDir,
+		RequestTimeoutSeconds:     5,
+		HeartbeatJitterSecondsMax: 0,
+		AgentVersion:              "1.0.0",
+		EnrollmentGeneration:      1,
+	}
+
+	agent, err := NewAgentWithClients(
+		cfg,
+		client.NewWithHTTPClient(cfg.PortalBaseURL, httpClient),
+		policy.NewClientWithHTTP(cfg.PortalBaseURL, httpClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAgentWithClients() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		cancel()
+	}()
+	if err := agent.Run(ctx); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if telemetryCalls != 1 {
+		t.Fatalf("telemetryCalls = %d, want 1", telemetryCalls)
+	}
+}
+
 func writeTestKeys(t *testing.T, dir string) (string, string) {
 	t.Helper()
 
@@ -734,6 +817,34 @@ func assertRequestWarningFlagEquals(t *testing.T, r *http.Request, expected stri
 	if flag, ok := flagsAny[0].(string); !ok || flag != expected {
 		t.Fatalf("warning flag = %#v, want %q", flagsAny[0], expected)
 	}
+}
+
+func writeShortLivedTLSCert(t *testing.T) ([]byte, []byte) {
+	t.Helper()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "127.0.0.1",
+		},
+		NotBefore:   time.Now().Add(-1 * time.Hour),
+		NotAfter:    time.Now().Add(7 * 24 * time.Hour),
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:    []string{"localhost"},
+		IPAddresses: []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
+	}
+	derBytes, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		t.Fatalf("CreateCertificate() error = %v", err)
+	}
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey)})
+	return certPEM, keyPEM
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

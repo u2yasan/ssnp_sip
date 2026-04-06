@@ -32,9 +32,12 @@ go run ./cmd/program-agent --config ./config.example.yaml telemetry --warning-fl
 - portal が `policy_version mismatch` などの `4xx/5xx` で `checks` を reject した場合、agent はそのまま失敗を返します
 - invalid signature や timeout のような transport / portal error も握り潰しません
 - telemetry は `--warning-flag` の repeatable CLI 指定で送信します
-- telemetry の自動生成は v0.1 では `portal_unreachable` と `local_check_execution_failed` のみです
+- telemetry の自動生成は v0.1 では `portal_unreachable`, `local_check_execution_failed`, `voting_key_expiry_risk`, `certificate_expiry_risk` です
 - `portal_unreachable` は portal 通信失敗が連続 3 回に達した後、回復時に 1 回だけ送信します
 - `local_check_execution_failed` は hardware / CPU / disk check が測定不能だった時だけ送信します
+- `voting_key_expiry_risk` は `voting_key_expiry_at` が 14 日未満の時に 1 回だけ送信します
+- `certificate_expiry_risk` は `monitored_endpoint` が `https` の時だけ leaf certificate の期限を見て、14 日未満なら 1 回だけ送信します
+- certificate expiry check は期限確認専用です。v0.1 では CA/hostname の妥当性検証は行いません
 - CPU 正規化スコアは stub 実装として weighted work units/sec をそのまま `normalized_cpu_score` として扱います
 - disk I/O チェックは local temp file に対する bounded test です
 
