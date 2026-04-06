@@ -27,6 +27,7 @@ import (
 func TestNewFailsOnBrokenPolicy(t *testing.T) {
 	dir := t.TempDir()
 	policyPath := filepath.Join(dir, "broken.yaml")
+	nodesPath := writeNodesConfig(t, dir)
 	if err := os.WriteFile(policyPath, []byte("policy_version:"), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
@@ -34,9 +35,46 @@ func TestNewFailsOnBrokenPolicy(t *testing.T) {
 	if _, err := New(Config{
 		ListenAddr:              "127.0.0.1:8080",
 		PolicyPath:              policyPath,
+		NodesConfigPath:         nodesPath,
+		StatePath:               filepath.Join(dir, "portal-state.json"),
 		AllowedClockSkewSeconds: 300,
 	}); err == nil {
 		t.Fatal("New() error = nil, want broken policy failure")
+	}
+}
+
+func TestNewFailsOnBrokenNodesConfigAndSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	policyPath := testPolicyPath()
+	nodesPath := filepath.Join(dir, "nodes.yaml")
+	statePath := filepath.Join(dir, "portal-state.json")
+	if err := os.WriteFile(nodesPath, []byte("nodes:"), 0o600); err != nil {
+		t.Fatalf("WriteFile(nodes) error = %v", err)
+	}
+	if _, err := New(Config{
+		ListenAddr:              "127.0.0.1:8080",
+		PolicyPath:              policyPath,
+		NodesConfigPath:         nodesPath,
+		StatePath:               statePath,
+		AllowedClockSkewSeconds: 300,
+		NotificationEmailTo:     "ops@example.invalid",
+	}); err == nil {
+		t.Fatal("New() error = nil, want broken nodes config failure")
+	}
+
+	nodesPath = writeNodesConfig(t, dir)
+	if err := os.WriteFile(statePath, []byte("{"), 0o600); err != nil {
+		t.Fatalf("WriteFile(state) error = %v", err)
+	}
+	if _, err := New(Config{
+		ListenAddr:              "127.0.0.1:8080",
+		PolicyPath:              policyPath,
+		NodesConfigPath:         nodesPath,
+		StatePath:               statePath,
+		AllowedClockSkewSeconds: 300,
+		NotificationEmailTo:     "ops@example.invalid",
+	}); err == nil {
+		t.Fatal("New() error = nil, want broken snapshot failure")
 	}
 }
 
@@ -312,6 +350,86 @@ func TestHeartbeatAlertScannerSendsCriticalNotifications(t *testing.T) {
 	}
 }
 
+func TestPersistenceAcrossRestartKeepsCooldownAndState(t *testing.T) {
+	dir := t.TempDir()
+	nodesPath := writeNodesConfig(t, dir)
+	statePath := filepath.Join(dir, "portal-state.json")
+	recorder := &notifier.Recorder{}
+
+	srv, err := New(Config{
+		ListenAddr:              "127.0.0.1:8080",
+		PolicyPath:              testPolicyPath(),
+		NodesConfigPath:         nodesPath,
+		StatePath:               statePath,
+		AllowedClockSkewSeconds: 300,
+		NotificationEmailTo:     "ops@example.invalid",
+		Notifier:                recorder,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	handler := srv.Handler()
+
+	pub, priv := newKeyPair(t)
+	pubHex := hex.EncodeToString(pub)
+	fingerprint := mustFingerprint(t, pubHex)
+	enrollPayload := map[string]any{
+		"node_id":                 "node-abc",
+		"enrollment_challenge_id": "enroll-001",
+		"agent_public_key":        pubHex,
+		"agent_version":           "1.0.0",
+	}
+	signPayload(t, priv, enrollPayload)
+	if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/agent/enroll", enrollPayload); rec.Code != http.StatusOK {
+		t.Fatalf("enroll status = %d, want 200", rec.Code)
+	}
+
+	payload := map[string]any{
+		"schema_version":        "1",
+		"node_id":               "node-abc",
+		"agent_key_fingerprint": fingerprint,
+		"telemetry_timestamp":   time.Now().UTC().Format(time.RFC3339),
+		"policy_version":        "2026-04",
+		"warning_flags":         []string{"portal_unreachable"},
+	}
+	signPayload(t, priv, payload)
+	if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/agent/telemetry", payload); rec.Code != http.StatusOK {
+		t.Fatalf("telemetry status = %d, want 200", rec.Code)
+	}
+	if recorder.Count() != 1 {
+		t.Fatalf("notification count = %d, want 1", recorder.Count())
+	}
+
+	restartedRecorder := &notifier.Recorder{}
+	restarted, err := New(Config{
+		ListenAddr:              "127.0.0.1:8080",
+		PolicyPath:              testPolicyPath(),
+		NodesConfigPath:         nodesPath,
+		StatePath:               statePath,
+		AllowedClockSkewSeconds: 300,
+		NotificationEmailTo:     "ops@example.invalid",
+		Notifier:                restartedRecorder,
+	})
+	if err != nil {
+		t.Fatalf("New(restart) error = %v", err)
+	}
+	restartedHandler := restarted.Handler()
+	signPayload(t, priv, payload)
+	if rec := doJSONRequest(t, restartedHandler, http.MethodPost, "/api/v1/agent/telemetry", payload); rec.Code != http.StatusOK {
+		t.Fatalf("restarted telemetry status = %d, want 200", rec.Code)
+	}
+	if restartedRecorder.Count() != 0 {
+		t.Fatalf("notification count after restart = %d, want cooldown suppression", restartedRecorder.Count())
+	}
+	node, ok := restarted.store.GetNode("node-abc")
+	if !ok || node.ActiveAgentKeyFingerprint != fingerprint {
+		t.Fatalf("restarted node = %#v, want enrolled fingerprint", node)
+	}
+	if len(restarted.store.ListTelemetry("node-abc", "portal_unreachable")) != 2 {
+		t.Fatal("expected telemetry history to survive restart")
+	}
+}
+
 func TestAgentAndPortalEndToEndOverHTTP(t *testing.T) {
 	repoRoot, err := filepath.Abs("../../../")
 	if err != nil {
@@ -382,9 +500,13 @@ func newTestServerWithNotifier(t *testing.T, n notifier.Notifier) *Server {
 
 func mustNewServer(t *testing.T, policyPath string, n notifier.Notifier) *Server {
 	t.Helper()
+	dir := t.TempDir()
+	nodesPath := writeNodesConfig(t, dir)
 	srv, err := New(Config{
 		ListenAddr:              "127.0.0.1:8080",
 		PolicyPath:              policyPath,
+		NodesConfigPath:         nodesPath,
+		StatePath:               filepath.Join(dir, "portal-state.json"),
 		AllowedClockSkewSeconds: 300,
 		NotificationEmailTo:     "ops@example.invalid",
 		Notifier:                n,
@@ -573,6 +695,21 @@ reference_environment:
 `
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("WriteFile(policy) error = %v", err)
+	}
+	return path
+}
+
+func writeNodesConfig(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "nodes.yaml")
+	content := `nodes:
+  - node_id: "node-abc"
+    display_name: "Node ABC"
+    operator_email: "ops@example.invalid"
+    enabled: true
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("WriteFile(nodes config) error = %v", err)
 	}
 	return path
 }

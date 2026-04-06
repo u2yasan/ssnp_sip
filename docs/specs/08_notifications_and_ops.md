@@ -73,9 +73,11 @@ Delivery failure rule:
 The current portal stub implements notification delivery as follows:
 - `email` is the only delivery channel exposed by configuration;
 - the delivery backend is a stub notifier that writes structured notification output instead of sending real email;
-- the portal records per-alert delivery attempts in memory;
-- the portal records notification delivery failure as an operational event in memory;
-- dedupe and cooldown state are in memory only, so restart clears alert-delivery history.
+- known nodes come from a separate seed config file;
+- runtime state is stored in a JSON snapshot file;
+- the portal records per-alert delivery attempts in runtime state;
+- the portal records notification delivery failure as an operational event in runtime state;
+- dedupe and cooldown state survive restart when the snapshot persists successfully.
 
 Current portal-side alert generation:
 - telemetry warnings received from the agent:

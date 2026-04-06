@@ -13,29 +13,48 @@ SSNP Program Agent と結合するための最小 Go portal stub です。
 
 制約:
 
-- state は in-memory のみです
-- known node は `node-abc` の固定 fixture だけです
+- known node は `--nodes-config` で与えた seed config から読みます
+- runtime state は `--state-path` の JSON snapshot に保存します
 - policy は `--policy` で与えた YAML を起動時に読みます
 - policy 読込失敗時は起動失敗します
+- nodes config 読込失敗時は起動失敗します
+- snapshot が壊れていたら起動失敗します
 - enrollment challenge は空でない文字列かどうかだけ見ます
 - `policy_version`、profile ID、heartbeat sequence、signature は fail-closed で検証します
-- telemetry は履歴一覧と latest view を in-memory で参照できます
+- telemetry は履歴一覧と latest view を返し、runtime state に保存されます
 - notification channel は `email` 前提ですが、v0.1 実装は `stdout` notifier stub です
 - heartbeat `stale` / `failed` は portal 側 scan で検出します
-- delivery failure は portal operational event として in-memory 記録します
+- delivery failure は portal operational event として runtime state に記録します
 
 起動:
 
 ```sh
-go run ./cmd/portal-server --listen 127.0.0.1:8080 --policy ../docs/policies/program_agent_policy.v2026-04.yaml --email-to ops@example.invalid
+go run ./cmd/portal-server \
+  --listen 127.0.0.1:8080 \
+  --policy ../docs/policies/program_agent_policy.v2026-04.yaml \
+  --nodes-config ./nodes.example.yaml \
+  --state-path ./portal-state.json \
+  --email-to ops@example.invalid
 ```
 
 通知関連 flag:
 
+- `--nodes-config`
+- `--state-path`
 - `--email-to`
 - `--heartbeat-stale-after-seconds`
 - `--heartbeat-failed-after-seconds`
 - `--alert-scan-interval-seconds`
+
+seed config 例:
+
+```yaml
+nodes:
+  - node_id: "node-abc"
+    display_name: "Node ABC"
+    operator_email: "ops@example.invalid"
+    enabled: true
+```
 
 agent と疎通する例:
 

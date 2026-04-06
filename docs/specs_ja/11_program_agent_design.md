@@ -335,7 +335,8 @@ v0.1 の warning 生成ルール:
 - accept した warning telemetry は portal 側の operator notification handling を起動してよい
 - notification dedupe には `node_id + alert_code + severity` を使う
 - `warning` severity には 24 時間の cooldown を使う
-- v0.1 の delivery state は in-memory のみ
+- known node は seed config file から読む
+- v0.1 の delivery / dedupe state は JSON snapshot file に保存する
 - notification delivery failure は operational event として記録し、それ自体で qualification を変えてはならない
 
 ## Portal API 契約
@@ -513,8 +514,8 @@ query parameter:
 
 response 挙動:
 - default view は telemetry history item を返す
-- `view=latest` は in-memory の latest view だけを返す
-- portal stub は v0.1 では telemetry を永続化しない
+- `view=latest` は current latest view を返す
+- portal stub は v0.1 では telemetry と関連 alert state を local JSON snapshot file に保存する
 
 ### `GET /api/v1/agent/policy`
 目的:
