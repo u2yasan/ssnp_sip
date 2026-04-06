@@ -11,6 +11,7 @@ This repository contains a private-draft package for the proposed **Symbol Super
 ## Contents
 
 - `README.md` — repository overview
+- `README_ja.md` — Japanese repository overview
 - `.github/ISSUE_TEMPLATE/general.md` — general discussion issue template
 - `.github/ISSUE_TEMPLATE/scoring.md` — scoring model discussion issue template
 - `.github/ISSUE_TEMPLATE/anti_concentration.md` — anti-concentration issue template
