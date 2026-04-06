@@ -45,6 +45,10 @@ paths:
     post:
       tags: [Agent]
       summary: Submit a signed heartbeat
+      description: |
+        Accepted heartbeat timestamps may be used by the portal to derive
+        `heartbeat_stale` and `heartbeat_failed` operational alerts under the
+        current notification policy.
       operationId: submitHeartbeat
       requestBody:
         required: true
@@ -101,6 +105,10 @@ paths:
     get:
       tags: [Agent]
       summary: Read stored telemetry warnings
+      description: |
+        Returns in-memory telemetry history or the current latest view from the
+        portal stub. This endpoint is read-only and does not imply durable
+        storage in v0.1.
       operationId: listTelemetry
       parameters:
         - name: node_id
@@ -136,6 +144,10 @@ paths:
     post:
       tags: [Agent]
       summary: Submit supplemental warning telemetry
+      description: |
+        Accepted warning telemetry may trigger portal-side notification handling
+        under the current notification policy. Delivery state is operational
+        metadata and is not exposed through this write endpoint.
       operationId: submitTelemetry
       requestBody:
         required: true

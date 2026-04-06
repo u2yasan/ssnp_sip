@@ -11,6 +11,7 @@ type Node struct {
 	AgentPublicKey            string
 	EnrollmentGeneration      int
 	LastHeartbeatSequence     int
+	LastHeartbeatTimestamp    string
 	LastPolicyVersion         string
 }
 
@@ -33,12 +34,44 @@ type LatestTelemetry struct {
 	TelemetryTimestamp string
 }
 
+type AlertState struct {
+	NodeID      string
+	AlertCode   string
+	Severity    string
+	LastSentAt  string
+	LastChannel string
+	Recipient   string
+}
+
+type NotificationDelivery struct {
+	NodeID      string
+	AlertCode   string
+	Severity    string
+	Channel     string
+	Recipient   string
+	OccurredAt  string
+	SentAt      string
+	Status      string
+	ErrorDetail string
+}
+
+type OperationalEvent struct {
+	NodeID         string
+	EventCode      string
+	Severity       string
+	EventTimestamp string
+	Detail         string
+}
+
 type Store struct {
 	mu              sync.RWMutex
 	nodes           map[string]Node
 	checkEvents     map[string]CheckEvent
 	telemetryEvents []TelemetryEvent
 	latestTelemetry map[string]LatestTelemetry
+	alertStates     map[string]AlertState
+	deliveries      []NotificationDelivery
+	operational     []OperationalEvent
 }
 
 func New(seedNodes []Node) *Store {
@@ -50,6 +83,7 @@ func New(seedNodes []Node) *Store {
 		nodes:           nodes,
 		checkEvents:     map[string]CheckEvent{},
 		latestTelemetry: map[string]LatestTelemetry{},
+		alertStates:     map[string]AlertState{},
 	}
 }
 
@@ -64,6 +98,19 @@ func (s *Store) SaveNode(node Node) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.nodes[node.NodeID] = node
+}
+
+func (s *Store) ListNodes() []Node {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Node, 0, len(s.nodes))
+	for _, node := range s.nodes {
+		out = append(out, node)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].NodeID < out[j].NodeID
+	})
+	return out
 }
 
 func (s *Store) SaveCheckEvent(event CheckEvent) bool {
@@ -134,4 +181,71 @@ func (s *Store) ListLatestTelemetry(nodeID, warningCode string) []LatestTelemetr
 		return out[i].NodeID < out[j].NodeID
 	})
 	return out
+}
+
+func (s *Store) GetAlertState(nodeID, alertCode, severity string) (AlertState, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	state, ok := s.alertStates[alertKey(nodeID, alertCode, severity)]
+	return state, ok
+}
+
+func (s *Store) SaveAlertState(state AlertState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.alertStates[alertKey(state.NodeID, state.AlertCode, state.Severity)] = state
+}
+
+func (s *Store) AddNotificationDelivery(delivery NotificationDelivery) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deliveries = append(s.deliveries, delivery)
+}
+
+func (s *Store) ListNotificationDeliveries(nodeID, alertCode string) []NotificationDelivery {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []NotificationDelivery
+	for _, delivery := range s.deliveries {
+		if nodeID != "" && delivery.NodeID != nodeID {
+			continue
+		}
+		if alertCode != "" && delivery.AlertCode != alertCode {
+			continue
+		}
+		out = append(out, delivery)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].SentAt > out[j].SentAt
+	})
+	return out
+}
+
+func (s *Store) AddOperationalEvent(event OperationalEvent) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.operational = append(s.operational, event)
+}
+
+func (s *Store) ListOperationalEvents(nodeID, eventCode string) []OperationalEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []OperationalEvent
+	for _, event := range s.operational {
+		if nodeID != "" && event.NodeID != nodeID {
+			continue
+		}
+		if eventCode != "" && event.EventCode != eventCode {
+			continue
+		}
+		out = append(out, event)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].EventTimestamp > out[j].EventTimestamp
+	})
+	return out
+}
+
+func alertKey(nodeID, alertCode, severity string) string {
+	return nodeID + "\x00" + alertCode + "\x00" + severity
 }
