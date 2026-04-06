@@ -11,6 +11,10 @@ This repository contains a private-draft package for the proposed **Symbol Super
 ## Contents
 
 - `README.md` — repository overview
+- `.github/ISSUE_TEMPLATE/general.md` — general discussion issue template
+- `.github/ISSUE_TEMPLATE/scoring.md` — scoring model discussion issue template
+- `.github/ISSUE_TEMPLATE/anti_concentration.md` — anti-concentration issue template
+- `.github/PULL_REQUEST_TEMPLATE.md` — pull request template
 - `sip/ssnp_sip_en.md` — English SIP draft
 - `sip/ssnp_sip_ja.md` — Japanese SIP draft
 - `docs/community_explainer_en.md` — English community explainer
