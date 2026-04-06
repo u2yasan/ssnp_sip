@@ -9,21 +9,34 @@ import (
 	"strings"
 	"time"
 
+	"github.com/u2yasan/ssnp_sip/portal/internal/notifier"
 	"github.com/u2yasan/ssnp_sip/portal/internal/policy"
 	"github.com/u2yasan/ssnp_sip/portal/internal/store"
 	"github.com/u2yasan/ssnp_sip/portal/internal/verify"
+)
+
+const (
+	alertHeartbeatStale             = "heartbeat_stale"
+	alertHeartbeatFailed            = "heartbeat_failed"
+	operationalEventDeliveryFailure = "notification_delivery_failed"
 )
 
 type Config struct {
 	ListenAddr              string
 	PolicyPath              string
 	AllowedClockSkewSeconds int
+	NotificationEmailTo     string
+	HeartbeatStaleAfter     time.Duration
+	HeartbeatFailedAfter    time.Duration
+	AlertScanInterval       time.Duration
+	Notifier                notifier.Notifier
 }
 
 type Server struct {
-	cfg    Config
-	policy policy.Document
-	store  *store.Store
+	cfg      Config
+	policy   policy.Document
+	store    *store.Store
+	notifier notifier.Notifier
 }
 
 func New(cfg Config) (*Server, error) {
@@ -37,10 +50,29 @@ func New(cfg Config) (*Server, error) {
 	if cfg.AllowedClockSkewSeconds <= 0 {
 		cfg.AllowedClockSkewSeconds = 300
 	}
+	if cfg.HeartbeatStaleAfter <= 0 {
+		cfg.HeartbeatStaleAfter = 15 * time.Minute
+	}
+	if cfg.HeartbeatFailedAfter <= 0 {
+		cfg.HeartbeatFailedAfter = 30 * time.Minute
+	}
+	if cfg.HeartbeatFailedAfter <= cfg.HeartbeatStaleAfter {
+		return nil, errors.New("heartbeat failed threshold must be greater than stale threshold")
+	}
+	if cfg.AlertScanInterval <= 0 {
+		cfg.AlertScanInterval = time.Minute
+	}
+	if cfg.Notifier == nil {
+		if strings.TrimSpace(cfg.NotificationEmailTo) == "" {
+			return nil, errors.New("missing notification email")
+		}
+		cfg.Notifier = notifier.StdoutNotifier{}
+	}
 	return &Server{
-		cfg:    cfg,
-		policy: doc,
-		store:  store.New([]store.Node{{NodeID: "node-abc"}}),
+		cfg:      cfg,
+		policy:   doc,
+		store:    store.New([]store.Node{{NodeID: "node-abc"}}),
+		notifier: cfg.Notifier,
 	}, nil
 }
 
@@ -59,6 +91,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		Addr:    s.cfg.ListenAddr,
 		Handler: s.Handler(),
 	}
+	go s.runAlertLoop(ctx)
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -192,6 +225,7 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	node.LastHeartbeatSequence = payload.SequenceNumber
+	node.LastHeartbeatTimestamp = payload.HeartbeatTimestamp
 	node.LastPolicyVersion = s.policy.PolicyVersion
 	s.store.SaveNode(node)
 	writeJSON(w, http.StatusOK, acceptedResponse(payload.NodeID))
@@ -296,15 +330,24 @@ func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing_field", "missing warning_flags")
 		return
 	}
-	warningCode := ""
-	if len(flags) > 0 {
-		warningCode, _ = flags[0].(string)
+	if len(flags) == 0 {
+		writeError(w, http.StatusBadRequest, "missing_field", "missing warning_flags")
+		return
 	}
-	s.store.AddTelemetryEvent(store.TelemetryEvent{
-		NodeID:             nodeID,
-		TelemetryTimestamp: stringField(payload, "telemetry_timestamp"),
-		WarningCode:        warningCode,
-	})
+	telemetryTimestamp := stringField(payload, "telemetry_timestamp")
+	for _, raw := range flags {
+		warningCode, _ := raw.(string)
+		if !isSupportedWarningCode(warningCode) {
+			writeError(w, http.StatusBadRequest, "invalid_warning_code", "invalid warning_code")
+			return
+		}
+		s.store.AddTelemetryEvent(store.TelemetryEvent{
+			NodeID:             nodeID,
+			TelemetryTimestamp: telemetryTimestamp,
+			WarningCode:        warningCode,
+		})
+		s.maybeNotifyAlert(r.Context(), nodeID, warningCode, telemetryTimestamp, time.Now().UTC())
+	}
 	writeJSON(w, http.StatusOK, acceptedResponse(nodeID))
 }
 
@@ -380,6 +423,140 @@ func acceptedResponse(nodeID string) map[string]any {
 		"status":      "accepted",
 		"node_id":     nodeID,
 		"received_at": time.Now().UTC().Format(time.RFC3339),
+	}
+}
+
+func (s *Server) runAlertLoop(ctx context.Context) {
+	ticker := time.NewTicker(s.cfg.AlertScanInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			s.evaluateHeartbeatAlerts(ctx, now.UTC())
+		}
+	}
+}
+
+func (s *Server) evaluateHeartbeatAlerts(ctx context.Context, now time.Time) {
+	for _, node := range s.store.ListNodes() {
+		if node.AgentPublicKey == "" || node.LastHeartbeatTimestamp == "" {
+			continue
+		}
+		lastSeen, err := time.Parse(time.RFC3339, node.LastHeartbeatTimestamp)
+		if err != nil {
+			continue
+		}
+		age := now.Sub(lastSeen)
+		switch {
+		case age >= s.cfg.HeartbeatFailedAfter:
+			s.maybeNotifyAlert(ctx, node.NodeID, alertHeartbeatFailed, now.Format(time.RFC3339), now)
+		case age >= s.cfg.HeartbeatStaleAfter:
+			s.maybeNotifyAlert(ctx, node.NodeID, alertHeartbeatStale, now.Format(time.RFC3339), now)
+		}
+	}
+}
+
+func (s *Server) maybeNotifyAlert(ctx context.Context, nodeID, alertCode, occurredAt string, now time.Time) {
+	severity := severityForAlert(alertCode)
+	if state, ok := s.store.GetAlertState(nodeID, alertCode, string(severity)); ok {
+		lastSentAt, err := time.Parse(time.RFC3339, state.LastSentAt)
+		if err == nil && now.Before(lastSentAt.Add(cooldownForSeverity(severity))) {
+			return
+		}
+	}
+	notification := notifier.Notification{
+		NodeID:     nodeID,
+		AlertCode:  alertCode,
+		Severity:   severity,
+		Channel:    "email",
+		Recipient:  s.cfg.NotificationEmailTo,
+		OccurredAt: occurredAt,
+		Message:    notificationMessage(alertCode),
+	}
+	if err := s.notifier.Send(ctx, notification); err != nil {
+		s.store.AddNotificationDelivery(store.NotificationDelivery{
+			NodeID:      nodeID,
+			AlertCode:   alertCode,
+			Severity:    string(severity),
+			Channel:     notification.Channel,
+			Recipient:   notification.Recipient,
+			OccurredAt:  occurredAt,
+			SentAt:      now.Format(time.RFC3339),
+			Status:      "failed",
+			ErrorDetail: err.Error(),
+		})
+		s.store.AddOperationalEvent(store.OperationalEvent{
+			NodeID:         nodeID,
+			EventCode:      operationalEventDeliveryFailure,
+			Severity:       "warning",
+			EventTimestamp: now.Format(time.RFC3339),
+			Detail:         err.Error(),
+		})
+		return
+	}
+	s.store.SaveAlertState(store.AlertState{
+		NodeID:      nodeID,
+		AlertCode:   alertCode,
+		Severity:    string(severity),
+		LastSentAt:  now.Format(time.RFC3339),
+		LastChannel: notification.Channel,
+		Recipient:   notification.Recipient,
+	})
+	s.store.AddNotificationDelivery(store.NotificationDelivery{
+		NodeID:     nodeID,
+		AlertCode:  alertCode,
+		Severity:   string(severity),
+		Channel:    notification.Channel,
+		Recipient:  notification.Recipient,
+		OccurredAt: occurredAt,
+		SentAt:     now.Format(time.RFC3339),
+		Status:     "sent",
+	})
+}
+
+func severityForAlert(alertCode string) notifier.Severity {
+	switch alertCode {
+	case alertHeartbeatStale, alertHeartbeatFailed:
+		return notifier.SeverityCritical
+	default:
+		return notifier.SeverityWarning
+	}
+}
+
+func cooldownForSeverity(severity notifier.Severity) time.Duration {
+	if severity == notifier.SeverityCritical {
+		return 15 * time.Minute
+	}
+	return 24 * time.Hour
+}
+
+func notificationMessage(alertCode string) string {
+	switch alertCode {
+	case alertHeartbeatStale:
+		return "Program Agent heartbeat is stale"
+	case alertHeartbeatFailed:
+		return "Program Agent heartbeat is failed"
+	case "portal_unreachable":
+		return "Program Agent cannot reach portal"
+	case "voting_key_expiry_risk":
+		return "Voting key expiry is approaching"
+	case "certificate_expiry_risk":
+		return "TLS certificate expiry is approaching"
+	case "local_check_execution_failed":
+		return "Local hardware check execution failed"
+	default:
+		return "SSNP portal alert"
+	}
+}
+
+func isSupportedWarningCode(code string) bool {
+	switch code {
+	case "portal_unreachable", "local_check_execution_failed", "voting_key_expiry_risk", "certificate_expiry_risk":
+		return true
+	default:
+		return false
 	}
 }
 

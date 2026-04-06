@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/x509"
@@ -19,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/u2yasan/ssnp_sip/portal/internal/notifier"
 	"github.com/u2yasan/ssnp_sip/portal/internal/verify"
 )
 
@@ -39,7 +41,8 @@ func TestNewFailsOnBrokenPolicy(t *testing.T) {
 }
 
 func TestPortalHandlerFlow(t *testing.T) {
-	srv := newTestServer(t)
+	recorder := &notifier.Recorder{}
+	srv := newTestServerWithNotifier(t, recorder)
 	handler := srv.Handler()
 
 	pub, priv := newKeyPair(t)
@@ -128,6 +131,9 @@ func TestPortalHandlerFlow(t *testing.T) {
 	if telemetryRec.Code != http.StatusOK {
 		t.Fatalf("telemetry status = %d, want 200, body=%s", telemetryRec.Code, telemetryRec.Body.String())
 	}
+	if recorder.Count() != 1 {
+		t.Fatalf("notification count = %d, want 1", recorder.Count())
+	}
 
 	telemetryListReq := httptest.NewRequest(http.MethodGet, "/api/v1/agent/telemetry?node_id=node-abc&warning_code=portal_unreachable", nil)
 	telemetryListRec := httptest.NewRecorder()
@@ -206,6 +212,106 @@ func TestChecksRejectPolicyMismatchAndTelemetryRejectsInvalidSignature(t *testin
 	}
 }
 
+func TestTelemetryNotificationCooldownAndDeliveryFailure(t *testing.T) {
+	recorder := &notifier.Recorder{}
+	srv := newTestServerWithNotifier(t, recorder)
+	handler := srv.Handler()
+
+	pub, priv := newKeyPair(t)
+	pubHex := hex.EncodeToString(pub)
+	fingerprint := mustFingerprint(t, pubHex)
+
+	enrollPayload := map[string]any{
+		"node_id":                 "node-abc",
+		"enrollment_challenge_id": "enroll-001",
+		"agent_public_key":        pubHex,
+		"agent_version":           "1.0.0",
+	}
+	signPayload(t, priv, enrollPayload)
+	if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/agent/enroll", enrollPayload); rec.Code != http.StatusOK {
+		t.Fatalf("enroll status = %d, want 200", rec.Code)
+	}
+
+	payload := map[string]any{
+		"schema_version":        "1",
+		"node_id":               "node-abc",
+		"agent_key_fingerprint": fingerprint,
+		"telemetry_timestamp":   time.Now().UTC().Format(time.RFC3339),
+		"policy_version":        "2026-04",
+		"warning_flags":         []string{"portal_unreachable"},
+	}
+	signPayload(t, priv, payload)
+	if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/agent/telemetry", payload); rec.Code != http.StatusOK {
+		t.Fatalf("telemetry status = %d, want 200", rec.Code)
+	}
+	signPayload(t, priv, payload)
+	if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/agent/telemetry", payload); rec.Code != http.StatusOK {
+		t.Fatalf("second telemetry status = %d, want 200", rec.Code)
+	}
+	if recorder.Count() != 1 {
+		t.Fatalf("notification count = %d, want 1 due to warning cooldown", recorder.Count())
+	}
+
+	failing := notifier.FailingRecorder("smtp down")
+	failingSrv := newTestServerWithNotifier(t, failing)
+	failingHandler := failingSrv.Handler()
+	signPayload(t, priv, enrollPayload)
+	if rec := doJSONRequest(t, failingHandler, http.MethodPost, "/api/v1/agent/enroll", enrollPayload); rec.Code != http.StatusOK {
+		t.Fatalf("failing enroll status = %d, want 200", rec.Code)
+	}
+	signPayload(t, priv, payload)
+	if rec := doJSONRequest(t, failingHandler, http.MethodPost, "/api/v1/agent/telemetry", payload); rec.Code != http.StatusOK {
+		t.Fatalf("failing telemetry status = %d, want 200", rec.Code)
+	}
+	events := failingSrv.store.ListOperationalEvents("node-abc", operationalEventDeliveryFailure)
+	if len(events) != 1 {
+		t.Fatalf("operational events = %d, want 1", len(events))
+	}
+	deliveries := failingSrv.store.ListNotificationDeliveries("node-abc", "portal_unreachable")
+	if len(deliveries) != 1 || deliveries[0].Status != "failed" {
+		t.Fatalf("deliveries = %#v, want single failed delivery", deliveries)
+	}
+}
+
+func TestHeartbeatAlertScannerSendsCriticalNotifications(t *testing.T) {
+	recorder := &notifier.Recorder{}
+	srv := mustNewServer(t, testPolicyPath(), recorder)
+	node, ok := srv.store.GetNode("node-abc")
+	if !ok {
+		t.Fatal("node-abc missing")
+	}
+	node.AgentPublicKey = strings.Repeat("ab", 32)
+	node.ActiveAgentKeyFingerprint = "fp"
+	now := time.Now().UTC()
+	node.LastHeartbeatTimestamp = now.Add(-16 * time.Minute).Format(time.RFC3339)
+	srv.store.SaveNode(node)
+
+	srv.evaluateHeartbeatAlerts(context.Background(), now)
+	if recorder.Count() != 1 {
+		t.Fatalf("notification count = %d, want 1 stale alert", recorder.Count())
+	}
+	last, _ := recorder.Last()
+	if last.AlertCode != alertHeartbeatStale || last.Severity != notifier.SeverityCritical {
+		t.Fatalf("last notification = %#v, want heartbeat_stale critical", last)
+	}
+
+	srv.evaluateHeartbeatAlerts(context.Background(), now.Add(10*time.Minute))
+	if recorder.Count() != 1 {
+		t.Fatalf("notification count = %d, want stale cooldown suppression", recorder.Count())
+	}
+
+	node.LastHeartbeatTimestamp = now.Add(-31 * time.Minute).Format(time.RFC3339)
+	srv.store.SaveNode(node)
+	srv.evaluateHeartbeatAlerts(context.Background(), now.Add(31*time.Minute))
+	if recorder.Count() != 2 {
+		t.Fatalf("notification count = %d, want failed alert added", recorder.Count())
+	}
+	last, _ = recorder.Last()
+	if last.AlertCode != alertHeartbeatFailed {
+		t.Fatalf("last notification = %#v, want heartbeat_failed", last)
+	}
+}
+
 func TestAgentAndPortalEndToEndOverHTTP(t *testing.T) {
 	repoRoot, err := filepath.Abs("../../../")
 	if err != nil {
@@ -216,7 +322,7 @@ func TestAgentAndPortalEndToEndOverHTTP(t *testing.T) {
 
 	tempDir := t.TempDir()
 	policyPath := writeE2EPolicy(t, tempDir)
-	srv := mustNewServer(t, policyPath)
+	srv := mustNewServer(t, policyPath, &notifier.Recorder{})
 	httpServer := httptest.NewServer(srv.Handler())
 	defer httpServer.Close()
 
@@ -266,15 +372,22 @@ func TestAgentAndPortalEndToEndOverHTTP(t *testing.T) {
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	return mustNewServer(t, testPolicyPath())
+	return mustNewServer(t, testPolicyPath(), &notifier.Recorder{})
 }
 
-func mustNewServer(t *testing.T, policyPath string) *Server {
+func newTestServerWithNotifier(t *testing.T, n notifier.Notifier) *Server {
+	t.Helper()
+	return mustNewServer(t, testPolicyPath(), n)
+}
+
+func mustNewServer(t *testing.T, policyPath string, n notifier.Notifier) *Server {
 	t.Helper()
 	srv, err := New(Config{
 		ListenAddr:              "127.0.0.1:8080",
 		PolicyPath:              policyPath,
 		AllowedClockSkewSeconds: 300,
+		NotificationEmailTo:     "ops@example.invalid",
+		Notifier:                n,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)

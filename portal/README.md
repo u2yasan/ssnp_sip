@@ -20,12 +20,22 @@ SSNP Program Agent と結合するための最小 Go portal stub です。
 - enrollment challenge は空でない文字列かどうかだけ見ます
 - `policy_version`、profile ID、heartbeat sequence、signature は fail-closed で検証します
 - telemetry は履歴一覧と latest view を in-memory で参照できます
+- notification channel は `email` 前提ですが、v0.1 実装は `stdout` notifier stub です
+- heartbeat `stale` / `failed` は portal 側 scan で検出します
+- delivery failure は portal operational event として in-memory 記録します
 
 起動:
 
 ```sh
-go run ./cmd/portal-server --listen 127.0.0.1:8080 --policy ../docs/policies/program_agent_policy.v2026-04.yaml
+go run ./cmd/portal-server --listen 127.0.0.1:8080 --policy ../docs/policies/program_agent_policy.v2026-04.yaml --email-to ops@example.invalid
 ```
+
+通知関連 flag:
+
+- `--email-to`
+- `--heartbeat-stale-after-seconds`
+- `--heartbeat-failed-after-seconds`
+- `--alert-scan-interval-seconds`
 
 agent と疎通する例:
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/u2yasan/ssnp_sip/portal/internal/server"
 )
@@ -22,6 +23,10 @@ func runMain() error {
 	listenAddr := flag.String("listen", "127.0.0.1:8080", "listen address")
 	policyPath := flag.String("policy", "", "path to policy yaml")
 	clockSkew := flag.Int("allowed-clock-skew-seconds", 300, "allowed timestamp clock skew in seconds")
+	emailTo := flag.String("email-to", "", "mandatory notification email recipient")
+	staleAfter := flag.Int("heartbeat-stale-after-seconds", 900, "seconds after last heartbeat before stale alert")
+	failedAfter := flag.Int("heartbeat-failed-after-seconds", 1800, "seconds after last heartbeat before failed alert")
+	alertScan := flag.Int("alert-scan-interval-seconds", 60, "seconds between heartbeat alert scans")
 	flag.Parse()
 
 	if *policyPath == "" {
@@ -32,6 +37,10 @@ func runMain() error {
 		ListenAddr:              *listenAddr,
 		PolicyPath:              *policyPath,
 		AllowedClockSkewSeconds: *clockSkew,
+		NotificationEmailTo:     *emailTo,
+		HeartbeatStaleAfter:     time.Duration(*staleAfter) * time.Second,
+		HeartbeatFailedAfter:    time.Duration(*failedAfter) * time.Second,
+		AlertScanInterval:       time.Duration(*alertScan) * time.Second,
 	})
 	if err != nil {
 		return err
