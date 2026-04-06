@@ -391,19 +391,173 @@ components:
       additionalProperties: false
       required:
         - policy_version
-        - cpu_profile_id
-        - disk_profile_id
         - heartbeat_interval_seconds
+        - cpu_profile
+        - disk_profile
+        - hardware_thresholds
+        - reference_environment
       properties:
         policy_version:
+          type: string
+        heartbeat_interval_seconds:
+          type: integer
+          minimum: 1
+        cpu_profile:
+          $ref: "#/components/schemas/CpuProfile"
+        disk_profile:
+          $ref: "#/components/schemas/DiskProfile"
+        hardware_thresholds:
+          $ref: "#/components/schemas/HardwareThresholds"
+        reference_environment:
+          $ref: "#/components/schemas/ReferenceEnvironment"
+    CpuProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - duration_seconds
+        - warmup_seconds
+        - measured_seconds
+        - cooldown_seconds
+        - worker_cap
+        - workload_mix
+        - acceptance_floor
+      properties:
+        id:
+          type: string
+        duration_seconds:
+          type: integer
+          minimum: 1
+        warmup_seconds:
+          type: integer
+          minimum: 0
+        measured_seconds:
+          type: integer
+          minimum: 1
+        cooldown_seconds:
+          type: integer
+          minimum: 0
+        worker_cap:
+          type: integer
+          minimum: 1
+        workload_mix:
+          $ref: "#/components/schemas/CpuWorkloadMix"
+        acceptance_floor:
+          $ref: "#/components/schemas/AcceptanceFloor"
+    CpuWorkloadMix:
+      type: object
+      additionalProperties: false
+      required:
+        - hashing
+        - integer
+        - matrix
+      properties:
+        hashing:
+          type: number
+        integer:
+          type: number
+        matrix:
+          type: number
+    DiskProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - duration_seconds
+        - warmup_seconds
+        - measured_seconds
+        - cooldown_seconds
+        - block_size_bytes
+        - queue_depth
+        - concurrency
+        - read_ratio
+        - write_ratio
+        - acceptance_floor
+      properties:
+        id:
+          type: string
+        duration_seconds:
+          type: integer
+          minimum: 1
+        warmup_seconds:
+          type: integer
+          minimum: 0
+        measured_seconds:
+          type: integer
+          minimum: 1
+        cooldown_seconds:
+          type: integer
+          minimum: 0
+        block_size_bytes:
+          type: integer
+          minimum: 1
+        queue_depth:
+          type: integer
+          minimum: 1
+        concurrency:
+          type: integer
+          minimum: 1
+        read_ratio:
+          type: number
+        write_ratio:
+          type: number
+        acceptance_floor:
+          $ref: "#/components/schemas/AcceptanceFloor"
+    AcceptanceFloor:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - minimum
+      properties:
+        type:
+          type: string
+        minimum:
+          type: number
+    HardwareThresholds:
+      type: object
+      additionalProperties: false
+      required:
+        - cpu_cores_min
+        - ram_gb_min
+        - storage_gb_min
+        - ssd_required
+      properties:
+        cpu_cores_min:
+          type: integer
+          minimum: 1
+        ram_gb_min:
+          type: integer
+          minimum: 1
+        storage_gb_min:
+          type: integer
+          minimum: 1
+        ssd_required:
+          type: boolean
+    ReferenceEnvironment:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - os_image_id
+        - agent_version
+        - cpu_profile_id
+        - disk_profile_id
+        - baseline_source_date
+      properties:
+        id:
+          type: string
+        os_image_id:
+          type: string
+        agent_version:
           type: string
         cpu_profile_id:
           type: string
         disk_profile_id:
           type: string
-        heartbeat_interval_seconds:
-          type: integer
-          minimum: 1
+        baseline_source_date:
+          type: string
+          format: date
     ErrorResponse:
       type: object
       additionalProperties: false

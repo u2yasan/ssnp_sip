@@ -44,6 +44,7 @@ It is not:
 - `09_governance_and_rollout.md`: rollout phases and governance boundary
 - `10_open_questions.md`: unresolved design decisions
 - `11_program_agent_design.md`: Program Agent responsibilities, heartbeat contract, and security boundaries
+- `12_program_agent_policy_file.md`: static YAML policy file shape and compatibility rules
 
 ## Consistency Note
 Some repository-level SIP drafts still describe the local agent as optional.

@@ -381,6 +381,9 @@ Illustrative payload:
 ## Program Agent API Endpoints
 The v0.1 portal-side API should remain minimal and explicit.
 
+Active policy values are expected to come from the repo-managed YAML policy file
+described in `docs/specs/12_program_agent_policy_file.md`.
+
 ### `POST /api/v1/agent/enroll`
 Purpose:
 - bind an agent identity to a registered node record.
@@ -464,9 +467,22 @@ Success response:
 ```json
 {
   "policy_version": "2026-04",
-  "cpu_profile_id": "cpu-check-v1",
-  "disk_profile_id": "disk-check-v1",
-  "heartbeat_interval_seconds": 300
+  "heartbeat_interval_seconds": 300,
+  "cpu_profile": {
+    "id": "cpu-check-v1"
+  },
+  "disk_profile": {
+    "id": "disk-check-v1"
+  },
+  "hardware_thresholds": {
+    "cpu_cores_min": 8,
+    "ram_gb_min": 32,
+    "storage_gb_min": 750,
+    "ssd_required": true
+  },
+  "reference_environment": {
+    "id": "ref-env-2026-04"
+  }
 }
 ```
 
