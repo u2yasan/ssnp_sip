@@ -1,6 +1,6 @@
 # SSNP コミュニティ向け説明資料（日本語）
 
-[English](community_explainer_en.md) | 日本語
+[English](community_explainer.md) | 日本語
 
 注記: この文書は日本語版です。対外的な共有や英語話者を含む議論では英語版も併読すること。
 

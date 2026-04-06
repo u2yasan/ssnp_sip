@@ -26,11 +26,11 @@ This repository contains a draft package for the proposed **Symbol Super Node Pr
 - `.github/ISSUE_TEMPLATE/scoring.md` — scoring model discussion issue template
 - `.github/ISSUE_TEMPLATE/anti_concentration.md` — anti-concentration issue template
 - `.github/PULL_REQUEST_TEMPLATE.md` — pull request template
-- `sip/ssnp_sip_en.md` — English SIP draft, primary reference
+- `sip/ssnp_sip.md` — English SIP draft, primary reference
 - `sip/ssnp_sip_ja.md` — Japanese SIP draft, translation/reference copy
-- `docs/community_explainer_en.md` — English community explainer
+- `docs/community_explainer.md` — English community explainer
 - `docs/community_explainer_ja.md` — Japanese community explainer
-- `docs/faq_en.md` — English FAQ with objections and counters
+- `docs/faq.md` — English FAQ with objections and counters
 - `docs/faq_ja.md` — Japanese FAQ with objections and counters
 - `docs/specs/` — English working basic-design specification set
 - `docs/specs_ja/` — Japanese working basic-design specification set

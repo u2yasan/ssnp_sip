@@ -27,11 +27,11 @@ Symbol ネットワークの安定性向上を目指す提案である。
 - `.github/ISSUE_TEMPLATE/scoring.md` — スコアリング議論用 Issue テンプレート
 - `.github/ISSUE_TEMPLATE/anti_concentration.md` — 寡占防止ルール議論用 Issue テンプレート
 - `.github/PULL_REQUEST_TEMPLATE.md` — Pull Request テンプレート
-- `sip/ssnp_sip_en.md` — 英語版 SIP ドラフト、主参照文書
+- `sip/ssnp_sip.md` — 英語版 SIP ドラフト、主参照文書
 - `sip/ssnp_sip_ja.md` — 日本語版 SIP ドラフト、翻訳・参考版
-- `docs/community_explainer_en.md` — 英語版コミュニティ向け説明資料
+- `docs/community_explainer.md` — 英語版コミュニティ向け説明資料
 - `docs/community_explainer_ja.md` — 日本語版コミュニティ向け説明資料
-- `docs/faq_en.md` — 反対論点とカウンターをまとめた英語版 FAQ
+- `docs/faq.md` — 反対論点とカウンターをまとめた英語版 FAQ
 - `docs/faq_ja.md` — 反対論点とカウンターをまとめた日本語版 FAQ
 - `docs/specs/` — 英語版の基本設計 v0.1 分割仕様
 - `docs/specs_ja/` — 日本語版の基本設計 v0.1 分割仕様
