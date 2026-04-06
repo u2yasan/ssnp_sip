@@ -6,7 +6,7 @@ This repository contains draft SIP documents, diagrams, and discussion materials
 
 # Symbol Super Node Program (SSNP) SIP Draft
 
-This repository contains a private-draft package for the proposed **Symbol Super Node Program (SSNP)**.
+This repository contains a draft package for the proposed **Symbol Super Node Program (SSNP)**.
 
 ## Contents
 
@@ -24,18 +24,6 @@ This repository contains a private-draft package for the proposed **Symbol Super
 - `docs/diagrams/reward_flow.mmd` — Mermaid reward flow diagram
 - `docs/diagrams/anti_concentration.mmd` — Mermaid anti-concentration diagram
 - `docs/diagrams/*.svg` — static SVG versions of the diagrams
-
-## Recommended private GitHub workflow
-
-1. Create a **private** repository.
-2. Upload this package as the initial commit.
-3. Review the reward source section before sharing with others.
-4. Open issues for:
-   - reward source
-   - scoring thresholds
-   - anti-concentration evidence standard
-   - notification channels
-5. After internal review, publish a redacted public version if needed.
 
 ## Positioning
 

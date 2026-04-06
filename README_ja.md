@@ -7,7 +7,7 @@ Symbol ネットワークの安定性向上を目指す提案である。
 # Symbol Super Node Program (SSNP) SIP ドラフト
 
 このリポジトリは、提案中の **Symbol Super Node Program (SSNP)** に関する
-プライベートドラフト一式を収録している。
+ドラフト一式を収録している。
 
 ## Contents
 
@@ -25,18 +25,6 @@ Symbol ネットワークの安定性向上を目指す提案である。
 - `docs/diagrams/reward_flow.mmd` — Mermaid 報酬フロー図
 - `docs/diagrams/anti_concentration.mmd` — Mermaid 寡占防止図
 - `docs/diagrams/*.svg` — 各図の静的 SVG 版
-
-## 推奨 GitHub 運用
-
-1. **Private リポジトリ** を作成する。
-2. このパッケージを初回コミットとして登録する。
-3. 外部共有前に報酬原資セクションを精査する。
-4. 以下の論点ごとに Issue を作成する。
-   - 報酬原資
-   - スコア閾値
-   - 寡占防止の証拠基準
-   - 通知チャネル
-5. 内部レビュー後、必要に応じて公開用の簡略版を別途作成する。
 
 ## Positioning
 
