@@ -44,6 +44,9 @@ hardware_thresholds:
   ram_gb_min: 32
   storage_gb_min: 750
   ssd_required: true
+probe_thresholds:
+  finalized_lag_max_blocks: 2
+  chain_lag_max_blocks: 5
 reference_environment:
   id: "ref-env-2026-04"
   os_image_id: "ubuntu-24.04-lts"
@@ -69,6 +72,28 @@ func TestLoadPolicyFailure(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "policy.yaml")
 	if err := os.WriteFile(path, []byte(`heartbeat_interval_seconds: 300`), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load() error = nil, want invalid policy")
+	}
+}
+
+func TestLoadPolicyFailureOnInvalidProbeThresholds(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "policy.yaml")
+	content := `policy_version: "2026-04"
+heartbeat_interval_seconds: 300
+cpu_profile:
+  id: "cpu-check-v1"
+disk_profile:
+  id: "disk-check-v1"
+probe_thresholds:
+  finalized_lag_max_blocks: 2
+  chain_lag_max_blocks: 0
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 

@@ -121,6 +121,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/agent/heartbeat", s.handleHeartbeat)
 	mux.HandleFunc("/api/v1/agent/checks", s.handleChecks)
 	mux.HandleFunc("/api/v1/agent/telemetry", s.handleTelemetry)
+	mux.HandleFunc("/api/v1/probes/events", s.handleProbeEvents)
+	mux.HandleFunc("/api/v1/probes/daily-summaries/", s.handleDailyProbeSummary)
+	mux.HandleFunc("/api/v1/voting-key-evidence", s.handleVotingKeyEvidence)
 	return mux
 }
 
@@ -329,6 +332,11 @@ func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "duplicate_event_id", "duplicate event_id")
 		return
 	}
+	if checkedAt := stringField(payload, "checked_at"); checkedAt != "" {
+		if dateUTC, err := datePart(checkedAt); err == nil {
+			s.updateQualificationArtifacts(nodeID, dateUTC)
+		}
+	}
 	if err := s.persist(); err != nil {
 		writeError(w, http.StatusInternalServerError, "state_persist_failed", err.Error())
 		return
@@ -423,6 +431,217 @@ func (s *Server) handleTelemetryRead(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleProbeEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusBadRequest, "invalid_method", "invalid method")
+		return
+	}
+	payload, err := decodeObject(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+
+	probeID := stringField(payload, "probe_id")
+	nodeID := stringField(payload, "node_id")
+	regionID := stringField(payload, "region_id")
+	observedAt := stringField(payload, "observed_at")
+	endpoint := stringField(payload, "endpoint")
+	if stringField(payload, "schema_version") != "1" {
+		writeError(w, http.StatusBadRequest, "invalid_schema_version", "invalid schema_version")
+		return
+	}
+	if probeID == "" || nodeID == "" || regionID == "" || observedAt == "" || endpoint == "" {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "missing required field")
+		return
+	}
+	if _, ok := s.store.GetNode(nodeID); !ok {
+		writeError(w, http.StatusNotFound, "unknown_node_id", "unknown node")
+		return
+	}
+	if err := s.validateTimestamp(observedAt); err != nil {
+		writeError(w, http.StatusBadRequest, "stale_timestamp", err.Error())
+		return
+	}
+
+	availabilityUp, ok := payload["availability_up"].(bool)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "missing availability_up")
+		return
+	}
+	measurementWindowSeconds, ok := intField(payload, "measurement_window_seconds")
+	if !ok || measurementWindowSeconds <= 0 {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "missing measurement_window_seconds")
+		return
+	}
+
+	finalizedLag, finalizedPresent, err := optionalNonNegativeIntField(payload, "finalized_lag_blocks")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_lag_value", err.Error())
+		return
+	}
+	chainLag, chainPresent, err := optionalNonNegativeIntField(payload, "chain_lag_blocks")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_lag_value", err.Error())
+		return
+	}
+	sourceHeight, _, err := optionalNonNegativeIntField(payload, "source_height")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_lag_value", err.Error())
+		return
+	}
+	peerHeight, _, err := optionalNonNegativeIntField(payload, "peer_height")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_lag_value", err.Error())
+		return
+	}
+	httpStatus, _, err := optionalNonNegativeIntField(payload, "http_status")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_payload", err.Error())
+		return
+	}
+	if availabilityUp && (!finalizedPresent || !chainPresent || sourceHeight == nil || peerHeight == nil) {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "missing measurable fields for available probe")
+		return
+	}
+
+	if !s.store.SaveProbeEvent(store.ProbeEvent{
+		ProbeID:                  probeID,
+		NodeID:                   nodeID,
+		RegionID:                 regionID,
+		ObservedAt:               observedAt,
+		Endpoint:                 endpoint,
+		AvailabilityUp:           availabilityUp,
+		FinalizedLagBlocks:       finalizedLag,
+		ChainLagBlocks:           chainLag,
+		SourceHeight:             sourceHeight,
+		PeerHeight:               peerHeight,
+		MeasurementWindowSeconds: measurementWindowSeconds,
+		HTTPStatus:               httpStatus,
+		ErrorCode:                stringField(payload, "error_code"),
+		ResolverIP:               stringField(payload, "resolver_ip"),
+		Notes:                    stringField(payload, "notes"),
+	}) {
+		writeError(w, http.StatusConflict, "duplicate_probe_id", "duplicate probe_id")
+		return
+	}
+	dateUTC, err := datePart(observedAt)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "stale_timestamp", err.Error())
+		return
+	}
+	summary := s.computeDailyQualificationSummary(nodeID, dateUTC)
+	s.store.SaveDailyQualificationSummary(summary)
+	s.store.SaveQualifiedDecisionRecord(s.computeQualifiedDecisionRecord(nodeID, summary))
+	if err := s.persist(); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_persist_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":      "accepted",
+		"probe_id":    probeID,
+		"node_id":     nodeID,
+		"received_at": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+func (s *Server) handleDailyProbeSummary(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusBadRequest, "invalid_method", "invalid method")
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/probes/daily-summaries/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "missing node_id or date_utc")
+		return
+	}
+	nodeID := strings.TrimSpace(parts[0])
+	dateUTC := strings.TrimSpace(parts[1])
+	if _, err := time.Parse("2006-01-02", dateUTC); err != nil {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "invalid date_utc")
+		return
+	}
+	if _, ok := s.store.GetNode(nodeID); !ok {
+		writeError(w, http.StatusNotFound, "unknown_node_id", "unknown node")
+		return
+	}
+	summary, ok := s.store.GetDailyQualificationSummary(nodeID, dateUTC)
+	if !ok {
+		writeError(w, http.StatusNotFound, "missing_daily_summary", "daily summary not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, summary)
+}
+
+func (s *Server) handleVotingKeyEvidence(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusBadRequest, "invalid_method", "invalid method")
+		return
+	}
+	payload, err := decodeObject(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	nodeID := stringField(payload, "node_id")
+	evidenceRef := stringField(payload, "evidence_ref")
+	observedAt := stringField(payload, "observed_at")
+	source := stringField(payload, "source")
+	if nodeID == "" || evidenceRef == "" || observedAt == "" || source == "" {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "missing required field")
+		return
+	}
+	if _, ok := s.store.GetNode(nodeID); !ok {
+		writeError(w, http.StatusNotFound, "unknown_node_id", "unknown node")
+		return
+	}
+	if err := s.validateTimestamp(observedAt); err != nil {
+		writeError(w, http.StatusBadRequest, "stale_timestamp", err.Error())
+		return
+	}
+	currentEpoch, ok := intField(payload, "current_epoch")
+	if !ok || currentEpoch < 0 {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "missing current_epoch")
+		return
+	}
+	votingKeyPresent, ok := payload["voting_key_present"].(bool)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "missing voting_key_present")
+		return
+	}
+	votingKeyValidForEpoch, ok := payload["voting_key_valid_for_epoch"].(bool)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "missing voting_key_valid_for_epoch")
+		return
+	}
+	if !s.store.SaveVotingKeyEvidence(store.VotingKeyEvidence{
+		EvidenceRef:            evidenceRef,
+		NodeID:                 nodeID,
+		ObservedAt:             observedAt,
+		CurrentEpoch:           currentEpoch,
+		VotingKeyPresent:       votingKeyPresent,
+		VotingKeyValidForEpoch: votingKeyValidForEpoch,
+		Source:                 source,
+	}) {
+		writeError(w, http.StatusConflict, "duplicate_evidence_ref", "duplicate evidence_ref")
+		return
+	}
+	if dateUTC, err := datePart(observedAt); err == nil {
+		s.updateQualificationArtifacts(nodeID, dateUTC)
+	}
+	if err := s.persist(); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_persist_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":       "accepted",
+		"evidence_ref": evidenceRef,
+		"node_id":      nodeID,
+		"received_at":  time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
 func (s *Server) authorizeMapPayload(node store.Node, payload map[string]any) error {
 	if node.AgentPublicKey == "" {
 		return errors.New("unknown fingerprint")
@@ -462,6 +681,204 @@ func decodeObject(r *http.Request) (map[string]any, error) {
 func stringField(payload map[string]any, key string) string {
 	value, _ := payload[key].(string)
 	return value
+}
+
+func intField(payload map[string]any, key string) (int, bool) {
+	raw, ok := payload[key]
+	if !ok || raw == nil {
+		return 0, false
+	}
+	switch value := raw.(type) {
+	case float64:
+		if value != float64(int(value)) {
+			return 0, false
+		}
+		return int(value), true
+	default:
+		return 0, false
+	}
+}
+
+func optionalNonNegativeIntField(payload map[string]any, key string) (*int, bool, error) {
+	raw, ok := payload[key]
+	if !ok || raw == nil {
+		return nil, false, nil
+	}
+	value, ok := raw.(float64)
+	if !ok || value != float64(int(value)) {
+		return nil, false, fmt.Errorf("%s must be an integer", key)
+	}
+	intValue := int(value)
+	if intValue < 0 {
+		return nil, false, fmt.Errorf("%s must be >= 0", key)
+	}
+	return &intValue, true, nil
+}
+
+func (s *Server) computeDailyQualificationSummary(nodeID, dateUTC string) store.DailyQualificationSummary {
+	events := s.store.ListProbeEventsByNodeAndDate(nodeID, dateUTC)
+	regionSet := map[string]struct{}{}
+	validProbeCount := len(events)
+	availabilityUpCount := 0
+	finalizedLagMeasurableCount := 0
+	finalizedLagWithinThresholdCount := 0
+	chainLagMeasurableCount := 0
+	chainLagWithinThresholdCount := 0
+
+	for _, event := range events {
+		regionSet[event.RegionID] = struct{}{}
+		if event.AvailabilityUp {
+			availabilityUpCount++
+		}
+		if event.AvailabilityUp && event.FinalizedLagBlocks != nil {
+			finalizedLagMeasurableCount++
+			if *event.FinalizedLagBlocks <= s.policy.ProbeThresholds.FinalizedLagMaxBlocks {
+				finalizedLagWithinThresholdCount++
+			}
+		}
+		if event.AvailabilityUp && event.ChainLagBlocks != nil {
+			chainLagMeasurableCount++
+			if *event.ChainLagBlocks <= s.policy.ProbeThresholds.ChainLagMaxBlocks {
+				chainLagWithinThresholdCount++
+			}
+		}
+	}
+
+	availabilityRatio := ratio(availabilityUpCount, validProbeCount)
+	finalizedLagRatio := ratio(finalizedLagWithinThresholdCount, finalizedLagMeasurableCount)
+	chainLagRatio := ratio(chainLagWithinThresholdCount, chainLagMeasurableCount)
+	regionCount := len(regionSet)
+
+	availabilityPassed := validProbeCount > 0 && availabilityRatio >= 0.99
+	finalizedLagPassed := finalizedLagMeasurableCount > 0 && finalizedLagRatio >= 0.95
+	chainLagPassed := chainLagMeasurableCount > 0 && chainLagRatio >= 0.95
+	multiRegionEvidencePassed := regionCount >= 2
+
+	insufficientEvidenceReason := ""
+	switch {
+	case validProbeCount == 0:
+		insufficientEvidenceReason = "no_valid_probes"
+	case regionCount < 2:
+		insufficientEvidenceReason = "insufficient_probe_regions"
+	case finalizedLagMeasurableCount == 0:
+		insufficientEvidenceReason = "missing_finalized_lag_evidence"
+	case chainLagMeasurableCount == 0:
+		insufficientEvidenceReason = "missing_chain_lag_evidence"
+	}
+
+	return store.DailyQualificationSummary{
+		NodeID:                           nodeID,
+		DateUTC:                          dateUTC,
+		PolicyVersion:                    s.policy.PolicyVersion,
+		FinalizedLagThresholdBlocks:      s.policy.ProbeThresholds.FinalizedLagMaxBlocks,
+		ChainLagThresholdBlocks:          s.policy.ProbeThresholds.ChainLagMaxBlocks,
+		ValidProbeCount:                  validProbeCount,
+		AvailabilityUpCount:              availabilityUpCount,
+		AvailabilityRatio:                availabilityRatio,
+		FinalizedLagMeasurableCount:      finalizedLagMeasurableCount,
+		FinalizedLagWithinThresholdCount: finalizedLagWithinThresholdCount,
+		FinalizedLagRatio:                finalizedLagRatio,
+		ChainLagMeasurableCount:          chainLagMeasurableCount,
+		ChainLagWithinThresholdCount:     chainLagWithinThresholdCount,
+		ChainLagRatio:                    chainLagRatio,
+		RegionCount:                      regionCount,
+		AvailabilityPassed:               availabilityPassed,
+		FinalizedLagPassed:               finalizedLagPassed,
+		ChainLagPassed:                   chainLagPassed,
+		MultiRegionEvidencePassed:        multiRegionEvidencePassed,
+		QualifiedProbeEvidencePassed:     insufficientEvidenceReason == "" && availabilityPassed && finalizedLagPassed && chainLagPassed && multiRegionEvidencePassed,
+		InsufficientEvidenceReason:       insufficientEvidenceReason,
+		GeneratedAt:                      time.Now().UTC().Format(time.RFC3339),
+	}
+}
+
+func ratio(numerator, denominator int) float64 {
+	if denominator <= 0 {
+		return 0
+	}
+	return float64(numerator) / float64(denominator)
+}
+
+func datePart(timestamp string) (string, error) {
+	ts, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		return "", err
+	}
+	return ts.UTC().Format("2006-01-02"), nil
+}
+
+func (s *Server) updateQualificationArtifacts(nodeID, dateUTC string) {
+	summary := s.computeDailyQualificationSummary(nodeID, dateUTC)
+	s.store.SaveDailyQualificationSummary(summary)
+	s.store.SaveQualifiedDecisionRecord(s.computeQualifiedDecisionRecord(nodeID, summary))
+}
+
+func (s *Server) computeQualifiedDecisionRecord(nodeID string, summary store.DailyQualificationSummary) store.QualifiedDecisionRecord {
+	node, _ := s.store.GetNode(nodeID)
+	failureReasons := []string{}
+
+	probeEvidencePassed := summary.QualifiedProbeEvidencePassed
+	if !probeEvidencePassed {
+		if summary.InsufficientEvidenceReason != "" {
+			failureReasons = append(failureReasons, "insufficient_probe_evidence")
+		} else {
+			failureReasons = append(failureReasons, "probe_evidence_failed")
+		}
+	}
+
+	heartbeatPassed := false
+	if strings.TrimSpace(node.LastHeartbeatTimestamp) == "" {
+		failureReasons = append(failureReasons, "heartbeat_missing")
+	} else {
+		lastSeen, err := time.Parse(time.RFC3339, node.LastHeartbeatTimestamp)
+		if err != nil || lastSeen.UTC().Format("2006-01-02") != summary.DateUTC {
+			failureReasons = append(failureReasons, "heartbeat_missing")
+		} else if time.Since(lastSeen.UTC()) >= s.cfg.HeartbeatStaleAfter {
+			failureReasons = append(failureReasons, "heartbeat_stale")
+		} else {
+			heartbeatPassed = true
+		}
+	}
+
+	hardwarePassed := false
+	if latestCheck, ok := s.store.LatestCheckEventForNode(nodeID); !ok {
+		failureReasons = append(failureReasons, "hardware_check_missing")
+	} else if strings.TrimSpace(latestCheck.CheckedAt) == "" {
+		failureReasons = append(failureReasons, "hardware_check_missing")
+	} else if checkedDateUTC, err := datePart(latestCheck.CheckedAt); err != nil || checkedDateUTC != summary.DateUTC {
+		failureReasons = append(failureReasons, "hardware_check_missing")
+	} else if !latestCheck.OverallPassed {
+		failureReasons = append(failureReasons, "hardware_check_failed")
+	} else {
+		hardwarePassed = true
+	}
+
+	votingKeyPassed := false
+	if latestEvidence, ok := s.store.GetLatestVotingKeyEvidenceForNode(nodeID); !ok {
+		failureReasons = append(failureReasons, "voting_key_evidence_missing")
+	} else if observedDateUTC, err := datePart(latestEvidence.ObservedAt); err != nil || observedDateUTC != summary.DateUTC {
+		failureReasons = append(failureReasons, "voting_key_evidence_missing")
+	} else if !latestEvidence.VotingKeyPresent {
+		failureReasons = append(failureReasons, "voting_key_not_present")
+	} else if !latestEvidence.VotingKeyValidForEpoch {
+		failureReasons = append(failureReasons, "voting_key_invalid")
+	} else {
+		votingKeyPassed = true
+	}
+
+	return store.QualifiedDecisionRecord{
+		NodeID:                     nodeID,
+		DateUTC:                    summary.DateUTC,
+		PolicyVersion:              summary.PolicyVersion,
+		ProbeEvidencePassed:        probeEvidencePassed,
+		HeartbeatPassed:            heartbeatPassed,
+		HardwarePassed:             hardwarePassed,
+		VotingKeyPassed:            votingKeyPassed,
+		Qualified:                  probeEvidencePassed && heartbeatPassed && hardwarePassed && votingKeyPassed,
+		FailureReasons:             failureReasons,
+		InsufficientEvidenceReason: summary.InsufficientEvidenceReason,
+		DecidedAt:                  time.Now().UTC().Format(time.RFC3339),
+	}
 }
 
 func classifyAuthError(err error) (int, string) {

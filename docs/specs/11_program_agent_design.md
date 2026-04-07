@@ -35,6 +35,10 @@ External probe infrastructure remains the primary source of truth for:
 - chain sync quality;
 - public endpoint reachability.
 
+For v0.1, the canonical external-probe limits are policy-managed and fixed to:
+- `finalized_lag_max_blocks = 2`
+- `chain_lag_max_blocks = 5`
+
 Program Agent is only authoritative for:
 - whether the local SSNP runtime instance is alive;
 - whether the agent still possesses its enrolled agent key;
@@ -521,7 +525,7 @@ Response behavior:
 
 ### `GET /api/v1/agent/policy`
 Purpose:
-- allow the agent to fetch the active policy version and profile identifiers.
+- allow the agent to fetch the active policy version, profile identifiers, and qualification thresholds.
 
 Query parameters:
 - `node_id`
@@ -543,6 +547,10 @@ Success response:
     "ram_gb_min": 32,
     "storage_gb_min": 750,
     "ssd_required": true
+  },
+  "probe_thresholds": {
+    "finalized_lag_max_blocks": 2,
+    "chain_lag_max_blocks": 5
   },
   "reference_environment": {
     "id": "ref-env-2026-04"

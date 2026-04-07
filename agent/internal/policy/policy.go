@@ -53,6 +53,11 @@ type HardwareThresholds struct {
 	SSDRequired  bool `json:"ssd_required"`
 }
 
+type ProbeThresholds struct {
+	FinalizedLagMaxBlocks int `json:"finalized_lag_max_blocks"`
+	ChainLagMaxBlocks     int `json:"chain_lag_max_blocks"`
+}
+
 type ReferenceEnvironment struct {
 	ID                 string `json:"id"`
 	OSImageID          string `json:"os_image_id"`
@@ -68,6 +73,7 @@ type Response struct {
 	CPUProfile               CPUProfile           `json:"cpu_profile"`
 	DiskProfile              DiskProfile          `json:"disk_profile"`
 	HardwareThresholds       HardwareThresholds   `json:"hardware_thresholds"`
+	ProbeThresholds          ProbeThresholds      `json:"probe_thresholds"`
 	ReferenceEnvironment     ReferenceEnvironment `json:"reference_environment"`
 }
 
@@ -118,5 +124,33 @@ func (c *Client) Fetch(ctx context.Context, nodeID, fingerprint string) (Respons
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return out, err
 	}
+	if err := validate(out); err != nil {
+		return out, err
+	}
 	return out, nil
+}
+
+func validate(doc Response) error {
+	if doc.PolicyVersion == "" {
+		return errInvalidPolicy("missing policy_version")
+	}
+	if doc.HeartbeatIntervalSeconds <= 0 {
+		return errInvalidPolicy("heartbeat_interval_seconds must be positive")
+	}
+	if doc.CPUProfile.ID == "" || doc.DiskProfile.ID == "" {
+		return errInvalidPolicy("missing profile id")
+	}
+	if doc.ProbeThresholds.FinalizedLagMaxBlocks <= 0 {
+		return errInvalidPolicy("probe_thresholds.finalized_lag_max_blocks must be positive")
+	}
+	if doc.ProbeThresholds.ChainLagMaxBlocks <= 0 {
+		return errInvalidPolicy("probe_thresholds.chain_lag_max_blocks must be positive")
+	}
+	return nil
+}
+
+type errInvalidPolicy string
+
+func (e errInvalidPolicy) Error() string {
+	return string(e)
 }

@@ -37,6 +37,10 @@ hardware_thresholds:
   storage_gb_min: 750
   ssd_required: true
 
+probe_thresholds:
+  finalized_lag_max_blocks: 2
+  chain_lag_max_blocks: 5
+
 reference_environment:
   id: "ref-env-2026-04"
   os_image_id: "ubuntu-24.04-lts"

@@ -1,0 +1,286 @@
+openapi: 3.1.0
+info:
+  title: SSNP External Probe Ingestion API
+  version: 0.1.0
+  summary: Probe-side ingestion contract for SSNP qualification evidence
+  description: |
+    Minimal v0.1 contract for external probe evidence used by the Qualification
+    Engine. Raw probe events are ingested first and daily qualification summaries
+    are derived from those immutable records.
+servers:
+  - url: https://ssnp.example.org
+    description: Example production endpoint
+tags:
+  - name: Probe
+    description: External probe ingestion endpoints
+paths:
+  /api/v1/probes/events:
+    post:
+      tags: [Probe]
+      summary: Submit one external probe observation
+      operationId: submitProbeEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProbeEvent"
+      responses:
+        "200":
+          description: Probe event accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProbeAcceptedResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/v1/probes/daily-summaries/{node_id}/{date_utc}:
+    get:
+      tags: [Probe]
+      summary: Read one derived daily qualification summary
+      operationId: getDailyQualificationSummary
+      parameters:
+        - name: node_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: date_utc
+          in: path
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Daily summary returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyQualificationSummary"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/ErrorResponse"
+components:
+  responses:
+    ErrorResponse:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    ProbeEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - probe_id
+        - node_id
+        - region_id
+        - observed_at
+        - endpoint
+        - availability_up
+        - measurement_window_seconds
+      properties:
+        schema_version:
+          type: string
+          const: "1"
+        probe_id:
+          type: string
+        node_id:
+          type: string
+        region_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        endpoint:
+          type: string
+          format: uri
+        availability_up:
+          type: boolean
+        finalized_lag_blocks:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        chain_lag_blocks:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        source_height:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        peer_height:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        measurement_window_seconds:
+          type: integer
+          minimum: 1
+        http_status:
+          type:
+            - integer
+            - "null"
+          minimum: 100
+          maximum: 599
+        error_code:
+          type:
+            - string
+            - "null"
+        resolver_ip:
+          type:
+            - string
+            - "null"
+        notes:
+          type:
+            - string
+            - "null"
+      description: |
+        One immutable observation from one region against one node endpoint.
+        If availability_up is false, lag and height fields may be null.
+    ProbeAcceptedResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - probe_id
+        - node_id
+        - received_at
+      properties:
+        status:
+          type: string
+          const: accepted
+        probe_id:
+          type: string
+        node_id:
+          type: string
+        received_at:
+          type: string
+          format: date-time
+    DailyQualificationSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - date_utc
+        - policy_version
+        - finalized_lag_threshold_blocks
+        - chain_lag_threshold_blocks
+        - valid_probe_count
+        - availability_up_count
+        - availability_ratio
+        - finalized_lag_measurable_count
+        - finalized_lag_within_threshold_count
+        - finalized_lag_ratio
+        - chain_lag_measurable_count
+        - chain_lag_within_threshold_count
+        - chain_lag_ratio
+        - region_count
+        - availability_passed
+        - finalized_lag_passed
+        - chain_lag_passed
+        - multi_region_evidence_passed
+        - qualified_probe_evidence_passed
+      properties:
+        node_id:
+          type: string
+        date_utc:
+          type: string
+          format: date
+        policy_version:
+          type: string
+        finalized_lag_threshold_blocks:
+          type: integer
+          minimum: 1
+        chain_lag_threshold_blocks:
+          type: integer
+          minimum: 1
+        valid_probe_count:
+          type: integer
+          minimum: 0
+        availability_up_count:
+          type: integer
+          minimum: 0
+        availability_ratio:
+          type: number
+          minimum: 0
+          maximum: 1
+        finalized_lag_measurable_count:
+          type: integer
+          minimum: 0
+        finalized_lag_within_threshold_count:
+          type: integer
+          minimum: 0
+        finalized_lag_ratio:
+          type: number
+          minimum: 0
+          maximum: 1
+        chain_lag_measurable_count:
+          type: integer
+          minimum: 0
+        chain_lag_within_threshold_count:
+          type: integer
+          minimum: 0
+        chain_lag_ratio:
+          type: number
+          minimum: 0
+          maximum: 1
+        region_count:
+          type: integer
+          minimum: 0
+        availability_passed:
+          type: boolean
+        finalized_lag_passed:
+          type: boolean
+        chain_lag_passed:
+          type: boolean
+        multi_region_evidence_passed:
+          type: boolean
+        qualified_probe_evidence_passed:
+          type: boolean
+        insufficient_evidence_reason:
+          type:
+            - string
+            - "null"
+        generated_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - error_code
+        - message
+      properties:
+        status:
+          type: string
+          const: error
+        error_code:
+          type: string
+          enum:
+            - invalid_schema_version
+            - missing_required_field
+            - invalid_lag_value
+            - duplicate_probe_id
+            - unknown_node_id
+            - unknown_region_id
+            - stale_timestamp
+            - rate_limited
+        message:
+          type: string
