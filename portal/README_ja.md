@@ -1,12 +1,12 @@
-[日本語](README_ja.md) | English
+[English](README.md) | 日本語
 
 # Portal
 
-Minimal Go portal stub for local SSNP verification and API contract testing.
+ローカル SSNP 検証と API 契約確認のための最小 Go portal stub。
 
 ## Quickstart
 
-Local verification mode without SMTP:
+SMTP なしのローカル検証モード:
 
 ```sh
 go run ./cmd/portal-server \
@@ -18,7 +18,7 @@ go run ./cmd/portal-server \
   --notifier-mode stdout
 ```
 
-Default SMTP-backed mode:
+デフォルトの SMTP 利用モード:
 
 ```sh
 SSNP_SMTP_PASSWORD=secret \
@@ -35,13 +35,13 @@ go run ./cmd/portal-server \
   --smtp-from ssnp@example.invalid
 ```
 
-## Notifier Modes
+## Notifier Mode
 
-- `smtp`: default; requires SMTP configuration and password
-- `stdout`: writes notifications as JSON to stdout; intended for local verification
-- `noop`: accepts notifications and drops them; intended for local verification only
+- `smtp`: デフォルト。SMTP 設定と password が必要
+- `stdout`: 通知を JSON として stdout に書く。ローカル確認専用
+- `noop`: 通知を受けて捨てる。ローカル確認専用
 
-## Minimum API Surface
+## 最低限の API Surface
 
 - `GET /api/v1/agent/policy`
 - `GET /api/v1/agent/telemetry`
@@ -61,23 +61,23 @@ go run ./cmd/portal-server \
 - `POST /api/v1/operator-group-evidence`
 - `POST /api/v1/shared-control-plane-evidence`
 
-## Runtime Constraints
+## 実行時の制約
 
-- known nodes come from `--nodes-config`
-- runtime state persists to `--state-path`
-- policy load is fail-closed
-- broken snapshot JSON blocks startup
-- smoke seed data is documented in `../testdata/smoke/README.md`
-- qualification requires:
-  - valid probe evidence
-  - two valid heartbeats within 15 minutes
+- known node は `--nodes-config` から読む
+- runtime state は `--state-path` に保存する
+- policy 読み込みは fail-closed
+- snapshot JSON が壊れていると起動失敗する
+- smoke 用 seed データの説明は `../testdata/smoke/README.md` を参照
+- qualification には次が必要
+  - 有効な probe evidence
+  - 15 分以内の有効 heartbeat 2 件
   - hardware check pass
   - voting-key evidence pass
-  - 72-hour observation window
+  - 72 時間 observation window
 
-## Verification
+## 検証
 
-Use `make test` from the repository root for normal regression checks and `make smoke` for the canonical minimum-working end-to-end path.
+通常の回帰検知は root の `make test`、最低限動作の end-to-end 確認は `make smoke` を使う。
 
 ```sh
 env GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod go test ./...

@@ -110,6 +110,14 @@ func testPolicyPath() string {
 	return filepath.Clean("../../../docs/policies/program_agent_policy.v2026-04.yaml")
 }
 
+func smokePolicyPath() string {
+	return filepath.Clean("../../../testdata/smoke/policy.yaml")
+}
+
+func smokeStateSeedPath() string {
+	return filepath.Clean("../../../testdata/smoke/portal-state.json")
+}
+
 func newKeyPair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
@@ -383,14 +391,30 @@ func writeAgentConfig(t *testing.T, dir, portalURL, privateKeyPath, publicKeyPat
 
 func waitForHeartbeat(t *testing.T, srv *Server, timeout time.Duration) {
 	t.Helper()
+	waitForHeartbeatSequence(t, srv, timeout, 1)
+}
+
+func waitForHeartbeatSequence(t *testing.T, srv *Server, timeout time.Duration, wantSequence int) {
+	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		node, ok := srv.store.GetNode("node-abc")
-		if ok && node.LastHeartbeatSequence >= 1 {
+		if ok && node.LastHeartbeatSequence >= wantSequence {
 			return
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	node, _ := srv.store.GetNode("node-abc")
-	t.Fatalf("heartbeat not observed, last sequence = %d", node.LastHeartbeatSequence)
+	t.Fatalf("heartbeat sequence = %d, want >= %d", node.LastHeartbeatSequence, wantSequence)
+}
+
+func copyFile(t *testing.T, srcPath, dstPath string) {
+	t.Helper()
+	data, err := os.ReadFile(srcPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", srcPath, err)
+	}
+	if err := os.WriteFile(dstPath, data, 0o600); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", dstPath, err)
+	}
 }

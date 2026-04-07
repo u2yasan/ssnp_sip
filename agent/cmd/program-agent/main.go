@@ -5,12 +5,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
 	"github.com/u2yasan/ssnp_sip/agent/internal/config"
+	agentcrypto "github.com/u2yasan/ssnp_sip/agent/internal/crypto"
 	"github.com/u2yasan/ssnp_sip/agent/internal/runtime"
 )
 
@@ -32,7 +34,11 @@ func runMain() error {
 
 	args := flag.Args()
 	if len(args) == 0 {
-		return errors.New("missing command: run | enroll | check | telemetry")
+		return errors.New("missing command: run | enroll | check | telemetry | gen-key")
+	}
+
+	if args[0] == "gen-key" {
+		return runGenKey(args[1:], os.Stdout)
 	}
 
 	cfg, err := config.Load(configPath)
@@ -85,6 +91,20 @@ func runMain() error {
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
+}
+
+func runGenKey(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("gen-key", flag.ContinueOnError)
+	outDir := fs.String("out-dir", "./keys", "directory to write agent key pair")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	privateKeyPath, publicKeyPath, err := agentcrypto.GenerateAndWriteKeyPair(*outDir)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "private_key_path=%s\npublic_key_path=%s\n", privateKeyPath, publicKeyPath)
+	return err
 }
 
 type stringListFlag []string

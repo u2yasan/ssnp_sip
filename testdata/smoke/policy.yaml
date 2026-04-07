@@ -1,0 +1,45 @@
+policy_version: "2026-04-smoke"
+heartbeat_interval_seconds: 1
+cpu_profile:
+  id: "cpu-check-v1"
+  duration_seconds: 3
+  warmup_seconds: 1
+  measured_seconds: 1
+  cooldown_seconds: 1
+  worker_cap: 8
+  workload_mix:
+    hashing: 0.50
+    integer: 0.30
+    matrix: 0.20
+  acceptance_floor:
+    type: "normalized_score"
+    minimum: 0
+disk_profile:
+  id: "disk-check-v1"
+  duration_seconds: 3
+  warmup_seconds: 1
+  measured_seconds: 1
+  cooldown_seconds: 1
+  block_size_bytes: 4096
+  queue_depth: 32
+  concurrency: 1
+  read_ratio: 0.70
+  write_ratio: 0.30
+  acceptance_floor:
+    type: "measured_iops"
+    minimum: 0
+hardware_thresholds:
+  cpu_cores_min: 1
+  ram_gb_min: 1
+  storage_gb_min: 1
+  ssd_required: false
+probe_thresholds:
+  finalized_lag_max_blocks: 2
+  chain_lag_max_blocks: 5
+reference_environment:
+  id: "ref-env-2026-04-smoke"
+  os_image_id: "ubuntu-24.04-lts"
+  agent_version: "1.0.0"
+  cpu_profile_id: "cpu-check-v1"
+  disk_profile_id: "disk-check-v1"
+  baseline_source_date: "2026-04-07"

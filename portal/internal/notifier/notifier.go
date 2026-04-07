@@ -49,6 +49,12 @@ func (n StdoutNotifier) Send(_ context.Context, notification Notification) error
 	return nil
 }
 
+type NoopNotifier struct{}
+
+func (NoopNotifier) Send(_ context.Context, _ Notification) error {
+	return nil
+}
+
 func Subject(notification Notification) string {
 	return fmt.Sprintf("[SSNP][%s] %s %s", strings.ToUpper(string(notification.Severity)), notification.AlertCode, notification.NodeID)
 }

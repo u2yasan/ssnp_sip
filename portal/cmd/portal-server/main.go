@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/u2yasan/ssnp_sip/portal/internal/notifier"
 	"github.com/u2yasan/ssnp_sip/portal/internal/server"
 )
 
@@ -24,6 +25,7 @@ func runMain() error {
 	policyPath := flag.String("policy", "", "path to policy yaml")
 	nodesConfigPath := flag.String("nodes-config", "", "path to known node seed config")
 	statePath := flag.String("state-path", "", "path to runtime state snapshot json")
+	notifierMode := flag.String("notifier-mode", "smtp", "notification backend: smtp | stdout | noop")
 	clockSkew := flag.Int("allowed-clock-skew-seconds", 300, "allowed timestamp clock skew in seconds")
 	emailTo := flag.String("email-to", "", "fallback notification email recipient")
 	smtpHost := flag.String("smtp-host", "", "smtp host")
@@ -46,7 +48,7 @@ func runMain() error {
 		return fmt.Errorf("missing --state-path")
 	}
 
-	srv, err := server.New(server.Config{
+	cfg := server.Config{
 		ListenAddr:              *listenAddr,
 		PolicyPath:              *policyPath,
 		NodesConfigPath:         *nodesConfigPath,
@@ -62,7 +64,18 @@ func runMain() error {
 		HeartbeatFailedAfter:    time.Duration(*failedAfter) * time.Second,
 		AlertScanInterval:       time.Duration(*alertScan) * time.Second,
 		NominalDailyPool:        *nominalDailyPool,
-	})
+	}
+	switch *notifierMode {
+	case "smtp":
+	case "stdout":
+		cfg.Notifier = notifier.StdoutNotifier{}
+	case "noop":
+		cfg.Notifier = notifier.NoopNotifier{}
+	default:
+		return fmt.Errorf("invalid --notifier-mode: %s", *notifierMode)
+	}
+
+	srv, err := server.New(cfg)
 	if err != nil {
 		return err
 	}

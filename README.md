@@ -1,76 +1,45 @@
 Language: English | [日本語](README_ja.md)
 
-SSNP is a proposal to improve Symbol network stability by introducing
-performance-based ranking, anti-concentration rules, and operational alerts
-for voting nodes — without modifying existing harvesting rewards.
+# SSNP SIP Draft
 
-This repository contains draft SIP documents, diagrams, and discussion materials.
+This repository contains:
 
-# Symbol Super Node Program (SSNP) SIP Draft
+- SSNP SIP and design documents
+- `agent`: Program Agent stub
+- `portal`: portal/API stub
 
-This repository contains a draft package for the proposed **Symbol Super Node Program (SSNP)**.
-For **v0.1**, SSNP participation requires running Program Agent.
+## Entry Points
 
-## Language Policy
+- repository overview and common smoke entry: `make smoke`
+- agent usage: `agent/README.md`
+- portal usage: `portal/README.md`
+- testing guide: `docs/testing.md`
+- design overview: `docs/specs/00_project_overview.md`
+- open questions: `docs/specs/10_open_questions.md`
 
-- `README.md` is the default repository entry point and the English reference.
-- English SIP and specification files are the primary source for cross-language maintenance.
-- Japanese files are provided as translations or companion documents where available.
-- GitHub Issue and Pull Request templates are maintained in English only.
-- If English and Japanese texts diverge, resolve the mismatch explicitly rather than mixing both languages into one file.
+## Minimum Verification
 
-## Contents
+Use these commands from the repository root:
 
-- `README.md` — repository overview
-- `README_ja.md` — Japanese repository overview
-- `.github/ISSUE_TEMPLATE/general.md` — general discussion issue template
-- `.github/ISSUE_TEMPLATE/scoring.md` — scoring model discussion issue template
-- `.github/ISSUE_TEMPLATE/anti_concentration.md` — anti-concentration issue template
-- `.github/PULL_REQUEST_TEMPLATE.md` — pull request template
-- `sip/ssnp_sip.md` — English SIP draft, primary reference
-- `sip/ssnp_sip_ja.md` — Japanese SIP draft, translation/reference copy
-- `docs/community_explainer.md` — English community explainer
-- `docs/community_explainer_ja.md` — Japanese community explainer
-- `docs/faq.md` — English FAQ with objections and counters
-- `docs/faq_ja.md` — Japanese FAQ with objections and counters
-- `docs/specs/` — English working basic-design specification set
-- `docs/specs_ja/` — Japanese working basic-design specification set
-- `docs/openapi/program_agent_api.yaml` — Program Agent API contract
-- `docs/openapi/external_probe_api.yaml` — external probe ingestion API contract
-- `docs/openapi/portal_read_api.yaml` — portal read API contract for ranking and status views
-- `docs/diagrams/architecture.mmd` — Mermaid architecture diagram
-- `docs/diagrams/reward_flow.mmd` — Mermaid reward flow diagram
-- `docs/diagrams/anti_concentration.mmd` — Mermaid anti-concentration diagram
-- `docs/diagrams/*.svg` — static SVG versions of the diagrams
+```sh
+make smoke
+make test
+make build
+```
+
+Command roles:
+
+- `make test`: regression check for the repository test suites
+- `make build`: compile both services
+- `make smoke`: canonical minimum-working check; runs the Go end-to-end smoke flow
+
+Smoke seed data is documented in `testdata/smoke/README.md`.
 
 ## Positioning
 
-SSNP should be presented as:
+SSNP is:
 
-- a **network stability support program**
-- **not** a change to consensus rules
-- **not** a reduction of existing harvesting rewards
-- a gradual, externally funded pilot first
-
-## Governance Note
-
-SSNP is intentionally designed as a non-consensus, external-layer program.
-
-It must not:
-
-- modify harvesting rewards
-- reduce transaction fees
-- introduce protocol-level enforcement
-
-Any future changes involving protocol economics require separate governance discussion.
-
-## Known Open Questions
-
-`Program Agent` mandatory status for **v0.1** is not an open question in this repository.
-It is fixed as an SSNP participation requirement, not as a general requirement for Symbol node operation.
-
-- reward funding source (critical)
-- scoring thresholds tuning
-- anti-concentration evidence rules
-- notification implementation scope
-- monitoring infrastructure decentralization
+- a network stability support program
+- not a consensus change
+- not a harvesting reward reduction
+- intended to be useful even before reward distribution is active

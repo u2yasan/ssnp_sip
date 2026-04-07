@@ -1,0 +1,11 @@
+{
+  "nodes": [
+    {
+      "node_id": "node-abc",
+      "display_name": "Node ABC",
+      "operator_email": "ops@example.invalid",
+      "enabled": true,
+      "validated_registration_at": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

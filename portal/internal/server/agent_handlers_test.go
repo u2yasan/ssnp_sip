@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,6 +66,23 @@ func TestNewFailsOnBrokenNodesConfigAndSnapshot(t *testing.T) {
 		Notifier:                &notifier.Recorder{},
 	}); err == nil {
 		t.Fatal("New() error = nil, want broken snapshot failure")
+	}
+}
+
+func TestNewAllowsNonSMTPNotifierModesWithoutSMTPConfig(t *testing.T) {
+	dir := t.TempDir()
+	nodesPath := writeNodesConfig(t, dir)
+	for _, n := range []notifier.Notifier{notifier.StdoutNotifier{}, notifier.NoopNotifier{}} {
+		if _, err := New(Config{
+			ListenAddr:              "127.0.0.1:8080",
+			PolicyPath:              testPolicyPath(),
+			NodesConfigPath:         nodesPath,
+			StatePath:               filepath.Join(dir, "portal-state-"+strings.ReplaceAll(strings.ToLower(reflect.TypeOf(n).Name()), "notifier", "")+".json"),
+			AllowedClockSkewSeconds: 300,
+			Notifier:                n,
+		}); err != nil {
+			t.Fatalf("New() error with %T = %v", n, err)
+		}
 	}
 }
 
