@@ -28,6 +28,7 @@ SSNP Program Agent と結合するための最小 Go portal stub です。
 - telemetry は履歴一覧と latest view を返し、runtime state に保存されます
 - read API contract は `../docs/openapi/portal_read_api.yaml` を正とします
 - `rankings` / `reward-eligibility` / `public-node-status` は未計算日の場合でも `200` + empty `items` を返します
+- ranking の同点解消順は `finalization score`、`availability score`、`validated registration time`、`node_id` です
 - `operator-node-status` は `unknown_node_id` と `missing_qualified_decision` を `404` で返します
 - `public-node-status` は公開最小 view であり、`failure_reasons` や `operator_group_id` を返しません
 - `operator-node-status` は node 単位の運営確認用 view であり、内部診断フィールドを返します
