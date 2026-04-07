@@ -49,6 +49,11 @@ type HardwareThresholds struct {
 	SSDRequired  bool `yaml:"ssd_required" json:"ssd_required"`
 }
 
+type ProbeThresholds struct {
+	FinalizedLagMaxBlocks int `yaml:"finalized_lag_max_blocks" json:"finalized_lag_max_blocks"`
+	ChainLagMaxBlocks     int `yaml:"chain_lag_max_blocks" json:"chain_lag_max_blocks"`
+}
+
 type ReferenceEnvironment struct {
 	ID                 string `yaml:"id" json:"id"`
 	OSImageID          string `yaml:"os_image_id" json:"os_image_id"`
@@ -64,6 +69,7 @@ type Document struct {
 	CPUProfile               CPUProfile           `yaml:"cpu_profile" json:"cpu_profile"`
 	DiskProfile              DiskProfile          `yaml:"disk_profile" json:"disk_profile"`
 	HardwareThresholds       HardwareThresholds   `yaml:"hardware_thresholds" json:"hardware_thresholds"`
+	ProbeThresholds          ProbeThresholds      `yaml:"probe_thresholds" json:"probe_thresholds"`
 	ReferenceEnvironment     ReferenceEnvironment `yaml:"reference_environment" json:"reference_environment"`
 }
 
@@ -88,6 +94,12 @@ func validate(doc Document) error {
 	}
 	if doc.CPUProfile.ID == "" || doc.DiskProfile.ID == "" {
 		return errInvalidPolicy("missing profile id")
+	}
+	if doc.ProbeThresholds.FinalizedLagMaxBlocks <= 0 {
+		return errInvalidPolicy("probe_thresholds.finalized_lag_max_blocks must be positive")
+	}
+	if doc.ProbeThresholds.ChainLagMaxBlocks <= 0 {
+		return errInvalidPolicy("probe_thresholds.chain_lag_max_blocks must be positive")
 	}
 	return nil
 }

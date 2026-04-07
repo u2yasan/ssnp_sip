@@ -53,7 +53,7 @@ Correct. That is why single-metric scoring is not acceptable.
 
 Counter:
 
-- SSNP uses combined evaluation across availability, finalization tracking, chain sync consistency, and voting-key continuity.
+- SSNP uses combined evaluation across availability, finalization tracking, chain sync consistency, and voting-key continuity, with finalized-lag and chain-lag limits defined by the canonical policy file.
 - It is not a simple fastest-response contest.
 - Multi-region monitoring reduces the value of optimizing for a single observation point.
 - Proxy or relay-based score manipulation must be explicitly treated as a monitoring-design and anomaly-detection problem.

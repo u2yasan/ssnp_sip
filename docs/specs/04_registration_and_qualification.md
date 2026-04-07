@@ -26,6 +26,86 @@ The priority is "currently able to continue voting safely and observably."
 ## Observation Window
 Minimum 72 hours before a newly registered node can become Qualified.
 
+## External Probe Input Contract
+The external probe system is the primary source of truth for availability,
+finalized lag, and chain synchronization quality.
+
+Each probe event must contain:
+- `schema_version`
+- `probe_id`
+- `node_id`
+- `region_id`
+- `observed_at`
+- `endpoint`
+- `availability_up`
+- `measurement_window_seconds`
+
+Each available and measurable probe event must also contain:
+- `finalized_lag_blocks`
+- `chain_lag_blocks`
+- `source_height`
+- `peer_height`
+
+Optional operator/debug fields may include:
+- `http_status`
+- `error_code`
+- `resolver_ip`
+- `notes`
+
+Validation rules:
+- one event represents one node, one region, one endpoint, and one timestamped observation;
+- `probe_id` must be unique per observation and must support idempotent replay handling;
+- `finalized_lag_blocks` and `chain_lag_blocks` must be integers >= 0 when present;
+- if `availability_up = false`, lag fields may be omitted or set to `null`;
+- a probe event with missing required fields is invalid and must not enter qualification calculation.
+
+Aggregation rules for Qualified evaluation:
+- the aggregation window is one UTC day;
+- daily availability uses all valid probe events in the day as its denominator;
+- finalized-lag compliance uses only valid probe events where `availability_up = true` and `finalized_lag_blocks` is measurable;
+- chain-lag compliance uses only valid probe events where `availability_up = true` and `chain_lag_blocks` is measurable;
+- at least 2 probe regions must contribute valid events during the day, otherwise the result is insufficient evidence rather than pass;
+- the v0.1 canonical limits come from the policy file `probe_thresholds` values.
+
+## Daily Qualification Summary Contract
+The Qualification Engine must read a daily summary record derived from raw probe events.
+
+Each daily summary must contain:
+- `node_id`
+- `date_utc`
+- `policy_version`
+- `finalized_lag_threshold_blocks`
+- `chain_lag_threshold_blocks`
+- `valid_probe_count`
+- `availability_up_count`
+- `availability_ratio`
+- `finalized_lag_measurable_count`
+- `finalized_lag_within_threshold_count`
+- `finalized_lag_ratio`
+- `chain_lag_measurable_count`
+- `chain_lag_within_threshold_count`
+- `chain_lag_ratio`
+- `region_count`
+- `availability_passed`
+- `finalized_lag_passed`
+- `chain_lag_passed`
+- `multi_region_evidence_passed`
+- `qualified_probe_evidence_passed`
+
+Optional fields:
+- `insufficient_evidence_reason`
+- `generated_at`
+
+Summary rules:
+- `availability_ratio = availability_up_count / valid_probe_count`;
+- `finalized_lag_ratio = finalized_lag_within_threshold_count / finalized_lag_measurable_count`;
+- `chain_lag_ratio = chain_lag_within_threshold_count / chain_lag_measurable_count`;
+- `availability_passed` requires `availability_ratio >= 0.99`;
+- `finalized_lag_passed` requires `finalized_lag_ratio >= 0.95`;
+- `chain_lag_passed` requires `chain_lag_ratio >= 0.95`;
+- `multi_region_evidence_passed` requires `region_count >= 2`;
+- `qualified_probe_evidence_passed` is true only when all probe-side pass flags are true and no insufficient-evidence condition applies.
+
 ## Hardware Capability Simple Check
 SSNP may require a simple check that a node meets the recommended Super Node
 hardware conditions for RAM, CPU, storage, and disk performance.
@@ -99,8 +179,8 @@ Pass rule:
 ## Qualified Node Criteria
 A node is Qualified only if all of the following are satisfied:
 - daily availability >= 99.0%;
-- finalized lag within threshold on >= 95% of valid probes;
-- chain synchronization within threshold on >= 95% of valid probes;
+- finalized lag at or below the canonical policy-file `probe_thresholds.finalized_lag_max_blocks` value on >= 95% of valid probes;
+- chain synchronization at or below the canonical policy-file `probe_thresholds.chain_lag_max_blocks` value on >= 95% of valid probes;
 - valid voting key for the relevant current epoch;
 - Program Agent heartbeat is current;
 - required hardware simple check is valid;
@@ -109,6 +189,9 @@ A node is Qualified only if all of the following are satisfied:
 ## Verification Notes
 - voting-key validity should be checked against current-epoch conditions;
 - registered voting keys should be verifiable from account-linked key data;
+- the canonical v0.1 values are currently `2` blocks for finalized lag and `5` blocks for chain lag, as defined in `docs/policies/program_agent_policy.v2026-04.yaml`;
+- raw probe events and daily qualification summaries should be stored separately;
+- Qualification Engine input should be the daily summary record, not raw event scans;
 - qualification is separate from reward eligibility.
 
 ## Important Separation

@@ -2,7 +2,7 @@
 
 ## 目的
 Program Agent 設計では、heartbeat 間隔、CPU / disk チェック profile、
-hardware threshold、reference environment metadata のような値を
+hardware threshold、probe threshold、reference environment metadata のような値を
 policy 駆動で扱う。
 
 そのため、実装者がローカル定数を勝手に埋め込まないよう、
@@ -34,6 +34,7 @@ policy file の形式は YAML とする。
 - `cpu_profile`
 - `disk_profile`
 - `hardware_thresholds`
+- `probe_thresholds`
 - `reference_environment`
 
 ## `cpu_profile`
@@ -99,6 +100,18 @@ v0.1 では以下に固定する。
 - `ram_gb_min` は `32`
 - `storage_gb_min` は `750`
 - `ssd_required` は `true`
+
+## `probe_thresholds`
+必須 field:
+- `finalized_lag_max_blocks`
+- `chain_lag_max_blocks`
+
+v0.1 では以下に固定する。
+- `finalized_lag_max_blocks` は `2`
+- `chain_lag_max_blocks` は `5`
+
+これらは v0.1 の external probe による Qualified 判定の正式閾値である。
+agent と portal はローカル定数を複製せず、同じ repo 管理 policy response を使わなければならない。
 
 ## `reference_environment`
 必須 field:

@@ -35,3 +35,23 @@ The system must never allow self-reported agent data to override contradictory e
 - multi-region probing must be standard, not optional;
 - failure of one probe region must not invalidate the entire evaluation set;
 - qualification and reward-eligibility decisions must be separable.
+
+## External Probe Data Model
+External probe ingestion must use a two-stage model:
+- raw probe events are stored as immutable observation records;
+- daily node qualification summaries are derived from those raw events.
+
+The Qualification Engine should consume the daily summary, not ad hoc probe reads.
+
+Required raw-event properties:
+- one event corresponds to one node, one region, one observed endpoint, and one observation timestamp;
+- duplicate `probe_id` values must be rejected or treated as idempotent replays;
+- negative lag values are invalid input;
+- a probe region outage must reduce available evidence, not silently rewrite the node result.
+
+Required daily-summary properties:
+- aggregation window is one UTC day;
+- availability uses all valid probe events in the window;
+- finalized-lag compliance uses only valid and measurable finalized-lag events;
+- chain-lag compliance uses only valid and measurable chain-lag events;
+- insufficient multi-region evidence must be visible as insufficient evidence, not coerced into pass.

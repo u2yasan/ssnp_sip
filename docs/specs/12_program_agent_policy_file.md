@@ -2,7 +2,7 @@
 
 ## Purpose
 The Program Agent design defines policy-driven behavior such as heartbeat interval,
-CPU and disk check profiles, hardware thresholds, and reference-environment metadata.
+CPU and disk check profiles, hardware thresholds, probe thresholds, and reference-environment metadata.
 
 Those values must exist as a concrete repo-managed policy file so implementers do not
 hard-code local constants.
@@ -33,6 +33,7 @@ Reasons:
 - `cpu_profile`
 - `disk_profile`
 - `hardware_thresholds`
+- `probe_thresholds`
 - `reference_environment`
 
 ## `cpu_profile`
@@ -98,6 +99,19 @@ For v0.1:
 - `ram_gb_min` is `32`
 - `storage_gb_min` is `750`
 - `ssd_required` is `true`
+
+## `probe_thresholds`
+Required fields:
+- `finalized_lag_max_blocks`
+- `chain_lag_max_blocks`
+
+For v0.1:
+- `finalized_lag_max_blocks` is `2`
+- `chain_lag_max_blocks` is `5`
+
+These values are the canonical external-probe qualification limits for v0.1.
+The agent and portal must consume the same repo-managed policy response rather
+than duplicating local constants.
 
 ## `reference_environment`
 Required fields:

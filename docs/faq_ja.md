@@ -51,7 +51,7 @@
 
 カウンター:
 
-- SSNP は availability、finalization tracking、chain sync consistency、Voting Key continuity の複合評価を前提にしている。
+- SSNP は availability、finalization tracking、chain sync consistency、Voting Key continuity の複合評価を前提にしており、finalized lag と chain lag の上限は canonical policy file で定義する。
 - 単純な ping 最速競争ではない。
 - 外部監視を複数地域から行うことで、単一点最適化の価値を下げる。
 - proxy や中継で見かけだけ整える行為は、監視設計と異常検知ルールの論点として明示的に扱うべきである。

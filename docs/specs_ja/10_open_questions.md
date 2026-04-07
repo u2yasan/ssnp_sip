@@ -2,15 +2,19 @@
 
 ## Critical
 1. 初期の外部資金源は何か
-2. finalized lag と chain lag の厳密な probe 閾値はいくつか
-3. Same Operator Group 判定に十分な証拠基準は何か
-4. Program Agent 必須は v0.1 のみか、それとも v0.1 以後も恒久要件か
+2. Same Operator Group 判定に十分な証拠基準は何か
+3. Program Agent 必須は v0.1 のみか、それとも v0.1 以後も恒久要件か
+
+## v0.1 で確定済み
+- external probe 閾値は canonical policy file に固定する
+  - finalized lag: `<= 2` blocks
+  - chain lag: `<= 5` blocks
 
 ## Secondary
-5. ASN diversity は hard cap にすべきか、scoring factor に留めるか
-6. raw scoring data をどこまで公開するか
-7. 未配分報酬 reserve の扱いをどうするか
-8. オペレーターリスクを増やさずに raw endpoint / probe data をどこまで公開できるか
+4. ASN diversity は hard cap にすべきか、scoring factor に留めるか
+5. raw scoring data をどこまで公開するか
+6. 未配分報酬 reserve の扱いをどうするか
+7. オペレーターリスクを増やさずに raw endpoint / probe data をどこまで公開できるか
 
 ## 初期版の対象外
 - 別ガバナンス承認なしの fee-based SSNP funding
