@@ -1,3 +1,4 @@
+.cache/
 agent/.cache/
 portal/.cache/
 portal-state.json
