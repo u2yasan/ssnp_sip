@@ -138,7 +138,10 @@ curl "http://127.0.0.1:8080/api/v1/operator-node-status/node-abc/2026-04-07"
 
 - `internal/server/server.go` は HTTP entrypoint と route wiring のみです
 - `internal/server/agent_handlers.go` は agent write/read endpoint を持ちます
-- `internal/server/evidence_handlers.go` は probe/evidence write と read endpoint を持ちます
+- `internal/server/probe_handlers.go` は probe ingest と probe summary read を持ちます
+- `internal/server/evidence_write_handlers.go` は evidence write endpoint を持ちます
+- `internal/server/read_handlers.go` は ranking / reward / node status read endpoint を持ちます
+- `internal/server/json_auth_helpers.go` は JSON decode / auth / timestamp helper を持ちます
 - `internal/server/qualification.go` は qualification / ranking / reward 計算を持ちます
 - `internal/server/alerts.go` は alert scan と notification delivery を持ちます
 - `internal/server/read_views.go` と `internal/server/http_helpers.go` は read model / HTTP helper を分離しています
