@@ -7,6 +7,7 @@ Use the repository root commands as follows.
 - `make test`: regression check across repository test suites
 - `make build`: compile portal, agent, and probe worker
 - `make smoke`: canonical minimum-working end-to-end verification
+- `make testnet-local`: testnet-style local integration verification
 
 ## Smoke
 
@@ -49,6 +50,18 @@ The repository now also includes a testnet-style verification path:
 - `portal/internal/server/TestTestnetOperableE2E`: portal + agent + probe worker flow against controlled local Symbol fixtures
 
 This is the CI-safe substitute for hitting public testnet nodes.
+
+Run it locally with:
+
+```sh
+make testnet-local
+```
+
+Command roles are intentionally separate:
+
+- `make smoke`: minimum-working gate
+- `make testnet-local`: local testnet-style integration gate
+- `make test`: broader regression gate
 
 ## CI
 

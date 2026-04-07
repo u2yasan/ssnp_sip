@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: test build smoke
+.PHONY: test build smoke testnet-local
 
 test:
 	cd agent && env GOCACHE=$$PWD/.cache/go-build GOMODCACHE=$$PWD/.cache/go-mod go test ./...
@@ -14,3 +14,6 @@ build:
 
 smoke:
 	cd portal && env GOCACHE=$$PWD/.cache/go-build GOMODCACHE=$$PWD/.cache/go-mod go test ./internal/server -run TestSmokeE2E -count=1
+
+testnet-local:
+	cd portal && env GOCACHE=$$PWD/.cache/go-build GOMODCACHE=$$PWD/.cache/go-mod go test ./internal/server -run TestTestnetOperableE2E -count=1
