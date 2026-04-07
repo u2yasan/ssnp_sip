@@ -49,3 +49,10 @@ go run ./cmd/program-agent --config ./config.example.yaml telemetry --warning-fl
 env GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod go test ./...
 env GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod go build ./...
 ```
+
+開発メモ:
+
+- `internal/runtime/runtime.go` は `Agent` 定義、constructor、top-level `Run` orchestration だけを持ちます
+- `internal/runtime/enrollment.go` は enroll、checks 実行、request signing を持ちます
+- `internal/runtime/heartbeat_loop.go` は heartbeat payload、retry/backoff、sequence 更新を持ちます
+- `internal/runtime/warning_checks.go` は telemetry、portal recovery、warning state、voting key / certificate check を持ちます
