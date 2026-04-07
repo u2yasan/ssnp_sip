@@ -5,7 +5,7 @@
 Use the repository root commands as follows.
 
 - `make test`: regression check across repository test suites
-- `make build`: compile both services
+- `make build`: compile portal, agent, and probe worker
 - `make smoke`: canonical minimum-working end-to-end verification
 
 ## Smoke
@@ -40,12 +40,23 @@ The repository includes dedicated smoke support tests:
 
 These protect smoke assumptions before the full end-to-end path breaks.
 
+## Testnet-Operable Coverage
+
+The repository now also includes a testnet-style verification path:
+
+- `probe/internal/symbol/*`: Symbol REST parsing and lag derivation
+- `probe/internal/worker/*`: probe submission integration against local fixture servers
+- `portal/internal/server/TestTestnetOperableE2E`: portal + agent + probe worker flow against controlled local Symbol fixtures
+
+This is the CI-safe substitute for hitting public testnet nodes.
+
 ## CI
 
 GitHub Actions workflow `.github/workflows/go-test.yml` runs:
 
 - `agent`: `go test ./...` and `go build ./...`
 - `portal`: `go test ./...` and `go build ./...`
+- `probe`: `go test ./...` and `go build ./...`
 - `smoke`: `make smoke`
 
 It runs on:

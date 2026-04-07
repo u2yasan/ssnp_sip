@@ -266,10 +266,49 @@ func buildAgentBinary(t *testing.T, agentDir string) string {
 	return binaryPath
 }
 
+func buildProbeBinary(t *testing.T, probeDir string) string {
+	t.Helper()
+	binaryPath := filepath.Join(t.TempDir(), "probe-worker")
+	if runtime.GOOS == "windows" {
+		binaryPath += ".exe"
+	}
+	buildCache, err := filepath.Abs(filepath.Join(probeDir, ".cache", "go-build"))
+	if err != nil {
+		t.Fatalf("filepath.Abs(go-build) error = %v", err)
+	}
+	modCache, err := filepath.Abs(filepath.Join(probeDir, ".cache", "go-mod"))
+	if err != nil {
+		t.Fatalf("filepath.Abs(go-mod) error = %v", err)
+	}
+	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/probe-worker")
+	cmd.Dir = probeDir
+	cmd.Env = append(
+		os.Environ(),
+		"GOCACHE="+buildCache,
+		"GOMODCACHE="+modCache,
+	)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go build probe error = %v\noutput:\n%s", err, string(output))
+	}
+	return binaryPath
+}
+
 func runAgentCommand(t *testing.T, agentBinary, agentDir, configPath string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(agentBinary, append([]string{"--config", configPath}, args...)...)
 	cmd.Dir = agentDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s error = %v\noutput:\n%s", strings.Join(args, " "), err, string(output))
+	}
+	return string(output)
+}
+
+func runProbeCommand(t *testing.T, probeBinary, probeDir, configPath string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(probeBinary, append([]string{"--config", configPath}, args...)...)
+	cmd.Dir = probeDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s error = %v\noutput:\n%s", strings.Join(args, " "), err, string(output))
@@ -371,12 +410,17 @@ func writeAgentKeys(t *testing.T, dir string) (string, string) {
 
 func writeAgentConfig(t *testing.T, dir, portalURL, privateKeyPath, publicKeyPath string) string {
 	t.Helper()
+	return writeAgentConfigWithEndpoint(t, dir, portalURL, privateKeyPath, publicKeyPath, "https://node-01.example.net:3001")
+}
+
+func writeAgentConfigWithEndpoint(t *testing.T, dir, portalURL, privateKeyPath, publicKeyPath, monitoredEndpoint string) string {
+	t.Helper()
 	path := filepath.Join(dir, "config.yaml")
 	content := "node_id: \"node-abc\"\n" +
 		"portal_base_url: \"" + portalURL + "\"\n" +
 		"agent_key_path: \"" + privateKeyPath + "\"\n" +
 		"agent_public_key_path: \"" + publicKeyPath + "\"\n" +
-		"monitored_endpoint: \"https://node-01.example.net:3001\"\n" +
+		"monitored_endpoint: \"" + monitoredEndpoint + "\"\n" +
 		"state_path: \"" + filepath.Join(dir, "state.json") + "\"\n" +
 		"temp_dir: \"" + dir + "\"\n" +
 		"request_timeout_seconds: 5\n" +
@@ -385,6 +429,26 @@ func writeAgentConfig(t *testing.T, dir, portalURL, privateKeyPath, publicKeyPat
 		"enrollment_generation: 1\n"
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("WriteFile(config) error = %v", err)
+	}
+	return path
+}
+
+func writeProbeConfig(t *testing.T, dir, portalURL, sourceEndpoint, regionID string, targets map[string]string) string {
+	t.Helper()
+	path := filepath.Join(dir, "probe-"+regionID+".yaml")
+	var builder strings.Builder
+	builder.WriteString("portal_base_url: \"" + portalURL + "\"\n")
+	builder.WriteString("region_id: \"" + regionID + "\"\n")
+	builder.WriteString("source_endpoint: \"" + sourceEndpoint + "\"\n")
+	builder.WriteString("request_timeout_seconds: 5\n")
+	builder.WriteString("poll_interval_seconds: 30\n")
+	builder.WriteString("targets:\n")
+	for nodeID, endpoint := range targets {
+		builder.WriteString("  - node_id: \"" + nodeID + "\"\n")
+		builder.WriteString("    endpoint: \"" + endpoint + "\"\n")
+	}
+	if err := os.WriteFile(path, []byte(builder.String()), 0o600); err != nil {
+		t.Fatalf("WriteFile(probe config) error = %v", err)
 	}
 	return path
 }

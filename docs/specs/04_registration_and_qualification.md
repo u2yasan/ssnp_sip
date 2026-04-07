@@ -3,7 +3,7 @@
 ## Participation Requirements
 A node must satisfy at least the following to participate:
 
-- it is operated on Symbol mainnet;
+- it is operated on Symbol mainnet, or on Symbol testnet during rollout/proving mode;
 - it has a voting key valid for the current epoch;
 - it exposes the monitored endpoint required by the program;
 - it runs Program Agent;

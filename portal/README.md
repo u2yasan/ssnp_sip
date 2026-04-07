@@ -4,6 +4,8 @@
 
 Minimal Go portal stub for local SSNP verification and API contract testing.
 
+For testnet-oriented operator flow, use `nodes.testnet.example.yaml` and `../docs/testnet_runbook.md`.
+
 ## Quickstart
 
 Local verification mode without SMTP:

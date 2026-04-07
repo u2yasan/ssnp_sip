@@ -4,6 +4,9 @@
 SSNP は、protocol rewrite ではなく、network-stability support program として導入すべきである。
 
 ## 導入フェーズ
+実装は rollout / proving の間、Symbol testnet 上で動かしてよい。
+これはプログラムの mainnet 向け位置づけを変えるものではない。
+
 ### Phase 1
 監視、登録、公開ランキング、通知のみ。
 

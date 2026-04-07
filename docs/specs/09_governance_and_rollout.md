@@ -5,6 +5,9 @@ SSNP should be introduced as a network-stability support program,
 not as a protocol rewrite.
 
 ## Deployment Phases
+Implementation may run on Symbol testnet during rollout and proving.
+That does not change the mainnet-facing positioning of the program.
+
 ### Phase 1
 Monitoring, registration, public ranking, and alerts only.
 

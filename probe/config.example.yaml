@@ -1,0 +1,8 @@
+portal_base_url: "https://ssnp.example.org"
+region_id: "ap-sg-1"
+source_endpoint: "https://source-node.example.net:3001"
+request_timeout_seconds: 10
+poll_interval_seconds: 30
+targets:
+  - node_id: "node-abc"
+    endpoint: "https://node-01.example.net:3001"

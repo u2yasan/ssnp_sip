@@ -25,7 +25,7 @@ It is not:
 - a delegated popularity ranking.
 
 ## Fixed MVP Assumptions
-- the target is Symbol mainnet voting-node operations;
+- the program target is Symbol mainnet voting-node operations, but the implementation may run on Symbol testnet for rollout and proving;
 - current-epoch voting-key validity matters more than raw machine performance;
 - external monitoring is the primary source of truth;
 - Program Agent execution is required for participation in this v0.1 design;

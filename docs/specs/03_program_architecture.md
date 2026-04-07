@@ -32,7 +32,7 @@ The system must never allow self-reported agent data to override contradictory e
 
 ## Architectural Requirements
 - the system must work before reward distribution is activated;
-- multi-region probing must be standard, not optional;
+- multi-region evidence remains the steady-state requirement, but rollout may begin with multiple simple worker instances instead of a dedicated fleet;
 - failure of one probe region must not invalidate the entire evaluation set;
 - qualification and reward-eligibility decisions must be separable.
 

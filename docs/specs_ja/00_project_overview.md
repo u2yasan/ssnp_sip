@@ -25,7 +25,7 @@ SSNP は **非コンセンサス型の外部レイヤープログラム** であ
 - 委任人気ランキング
 
 ## 固定する MVP 前提
-- 対象は Symbol mainnet の voting node 運用
+- プログラム上の対象は Symbol mainnet の voting node 運用だが、rollout / proving のために実装を Symbol testnet で動かしてよい
 - 生のマシン性能より current epoch に対する voting key 有効性を重視する
 - 外部監視を主たる真実源とする
 - この v0.1 設計では Program Agent 実行を参加条件とする

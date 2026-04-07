@@ -21,6 +21,8 @@ go run ./cmd/program-agent --config ./config.example.yaml check --event-type reg
 go run ./cmd/program-agent --config ./config.example.yaml telemetry --warning-flag portal_unreachable
 ```
 
+For testnet-oriented setup, start from `config.testnet.example.yaml` and follow `../docs/testnet_runbook.md`.
+
 ## Commands
 
 - `gen-key`: writes `agent_private_key.pem` and `agent_public_key.pem` to `--out-dir` and prints their paths as JSON

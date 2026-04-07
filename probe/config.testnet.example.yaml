@@ -1,0 +1,8 @@
+portal_base_url: "https://ssnp-testnet.example.org"
+region_id: "ap-sg-1"
+source_endpoint: "https://your-testnet-api-node.example.com:3001"
+request_timeout_seconds: 10
+poll_interval_seconds: 30
+targets:
+  - node_id: "node-testnet-001"
+    endpoint: "https://your-testnet-api-node.example.com:3001"

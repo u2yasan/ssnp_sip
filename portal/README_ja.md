@@ -4,6 +4,8 @@
 
 ローカル SSNP 検証と API 契約確認のための最小 Go portal stub。
 
+testnet 向け運用手順は `nodes.testnet.example.yaml` と `../docs/testnet_runbook.md` を使うこと。
+
 ## Quickstart
 
 SMTP なしのローカル検証モード:

@@ -1,0 +1,5 @@
+nodes:
+  - node_id: "node-testnet-001"
+    display_name: "Testnet Node 001"
+    operator_email: "ops@example.invalid"
+    enabled: true

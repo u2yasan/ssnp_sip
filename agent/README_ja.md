@@ -21,6 +21,8 @@ go run ./cmd/program-agent --config ./config.example.yaml check --event-type reg
 go run ./cmd/program-agent --config ./config.example.yaml telemetry --warning-flag portal_unreachable
 ```
 
+testnet 向け導線は `config.testnet.example.yaml` と `../docs/testnet_runbook.md` を使うこと。
+
 ## コマンド
 
 - `gen-key`: `--out-dir` に `agent_private_key.pem` と `agent_public_key.pem` を出力し、その path を JSON で表示する

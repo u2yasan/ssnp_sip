@@ -3,7 +3,7 @@
 ## 参加条件
 参加ノードは最低でも以下を満たす。
 
-- Symbol mainnet 上で運用されていること
+- Symbol mainnet 上で運用されていること、または rollout / proving モードでは Symbol testnet 上で運用されていること
 - current epoch に有効な voting key を持つこと
 - プログラム指定の monitored endpoint を公開していること
 - Program Agent を実行していること
