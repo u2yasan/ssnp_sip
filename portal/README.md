@@ -142,3 +142,7 @@ curl "http://127.0.0.1:8080/api/v1/operator-node-status/node-abc/2026-04-07"
 - `internal/server/qualification.go` は qualification / ranking / reward 計算を持ちます
 - `internal/server/alerts.go` は alert scan と notification delivery を持ちます
 - `internal/server/read_views.go` と `internal/server/http_helpers.go` は read model / HTTP helper を分離しています
+- `internal/store/types.go` は persisted state record 定義を持ちます
+- `internal/store/snapshot.go` は nodes seed config と runtime snapshot の load/save を持ちます
+- `internal/store/node_and_events.go` は node/event 系 CRUD を持ちます
+- `internal/store/qualification_views.go` は qualification / ranking / reward / evidence access を持ちます
