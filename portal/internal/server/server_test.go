@@ -1002,6 +1002,89 @@ func TestRankingOrdersQualifiedNodesDeterministically(t *testing.T) {
 	}
 }
 
+func TestReadEndpointsReturnEmptyCollectionsForUnknownDate(t *testing.T) {
+	srv := newTestServer(t)
+	handler := srv.Handler()
+	dateUTC := "2026-04-08"
+
+	for _, tc := range []struct {
+		name string
+		path string
+	}{
+		{name: "rankings", path: "/api/v1/rankings/" + dateUTC},
+		{name: "reward eligibility", path: "/api/v1/reward-eligibility/" + dateUTC},
+		{name: "public node status", path: "/api/v1/public-node-status/" + dateUTC},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+			}
+
+			var payload struct {
+				DateUTC string            `json:"date_utc"`
+				Items   []json.RawMessage `json:"items"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+				t.Fatalf("Unmarshal() error = %v", err)
+			}
+			if payload.DateUTC != dateUTC {
+				t.Fatalf("date_utc = %q, want %q", payload.DateUTC, dateUTC)
+			}
+			if len(payload.Items) != 0 {
+				t.Fatalf("len(items) = %d, want 0", len(payload.Items))
+			}
+		})
+	}
+}
+
+func TestReadEndpointsRejectInvalidMethodAndDate(t *testing.T) {
+	srv := newTestServer(t)
+	handler := srv.Handler()
+
+	for _, tc := range []struct {
+		name      string
+		method    string
+		path      string
+		wantCode  int
+		wantError string
+	}{
+		{name: "rankings invalid method", method: http.MethodPost, path: "/api/v1/rankings/2026-04-07", wantCode: http.StatusBadRequest, wantError: "invalid_method"},
+		{name: "reward eligibility invalid method", method: http.MethodPost, path: "/api/v1/reward-eligibility/2026-04-07", wantCode: http.StatusBadRequest, wantError: "invalid_method"},
+		{name: "public node status invalid method", method: http.MethodPost, path: "/api/v1/public-node-status/2026-04-07", wantCode: http.StatusBadRequest, wantError: "invalid_method"},
+		{name: "operator node status invalid method", method: http.MethodPost, path: "/api/v1/operator-node-status/node-abc/2026-04-07", wantCode: http.StatusBadRequest, wantError: "invalid_method"},
+		{name: "rankings invalid date", method: http.MethodGet, path: "/api/v1/rankings/not-a-date", wantCode: http.StatusBadRequest, wantError: "missing_required_field"},
+		{name: "reward eligibility invalid date", method: http.MethodGet, path: "/api/v1/reward-eligibility/not-a-date", wantCode: http.StatusBadRequest, wantError: "missing_required_field"},
+		{name: "public node status invalid date", method: http.MethodGet, path: "/api/v1/public-node-status/not-a-date", wantCode: http.StatusBadRequest, wantError: "missing_required_field"},
+		{name: "operator node status invalid date", method: http.MethodGet, path: "/api/v1/operator-node-status/node-abc/not-a-date", wantCode: http.StatusBadRequest, wantError: "missing_required_field"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			assertErrorResponse(t, rec, tc.wantCode, tc.wantError)
+		})
+	}
+}
+
+func TestOperatorNodeStatusReadErrors(t *testing.T) {
+	srv := newTestServer(t)
+	handler := srv.Handler()
+	dateUTC := "2026-04-07"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/operator-node-status/unknown-node/"+dateUTC, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	assertErrorResponse(t, rec, http.StatusNotFound, "unknown_node_id")
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/operator-node-status/node-abc/"+dateUTC, nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	assertErrorResponse(t, rec, http.StatusNotFound, "missing_qualified_decision")
+}
+
 func TestTelemetryNotificationCooldownAndDeliveryFailure(t *testing.T) {
 	recorder := &notifier.Recorder{}
 	srv := newTestServerWithNotifier(t, recorder)
@@ -1482,6 +1565,30 @@ func assertTelemetryItemsLength(t *testing.T, body []byte, want int) {
 	}
 	if len(payload.Items) != want {
 		t.Fatalf("len(items) = %d, want %d", len(payload.Items), want)
+	}
+}
+
+func assertErrorResponse(t *testing.T, rec *httptest.ResponseRecorder, wantStatus int, wantCode string) {
+	t.Helper()
+	if rec.Code != wantStatus {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, wantStatus, rec.Body.String())
+	}
+	var payload struct {
+		Status    string `json:"status"`
+		ErrorCode string `json:"error_code"`
+		Message   string `json:"message"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if payload.Status != "error" {
+		t.Fatalf("status field = %q, want error", payload.Status)
+	}
+	if payload.ErrorCode != wantCode {
+		t.Fatalf("error_code = %q, want %q", payload.ErrorCode, wantCode)
+	}
+	if payload.Message == "" {
+		t.Fatal("message = empty, want non-empty")
 	}
 }
 

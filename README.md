@@ -34,6 +34,9 @@ This repository contains a draft package for the proposed **Symbol Super Node Pr
 - `docs/faq_ja.md` — Japanese FAQ with objections and counters
 - `docs/specs/` — English working basic-design specification set
 - `docs/specs_ja/` — Japanese working basic-design specification set
+- `docs/openapi/program_agent_api.yaml` — Program Agent API contract
+- `docs/openapi/external_probe_api.yaml` — external probe ingestion API contract
+- `docs/openapi/portal_read_api.yaml` — portal read API contract for ranking and status views
 - `docs/diagrams/architecture.mmd` — Mermaid architecture diagram
 - `docs/diagrams/reward_flow.mmd` — Mermaid reward flow diagram
 - `docs/diagrams/anti_concentration.mmd` — Mermaid anti-concentration diagram

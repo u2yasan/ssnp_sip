@@ -1,0 +1,451 @@
+openapi: 3.1.0
+info:
+  title: SSNP Portal Read API
+  version: 0.1.0
+  summary: Public and operator-facing read contract for ranking and eligibility views
+  description: |
+    Read-only portal contract for derived ranking, reward-eligibility, and node
+    status views. These endpoints expose portal-computed daily views only. They
+    do not accept writes, and they do not define discovery helpers such as
+    `latest` or date-list endpoints in v0.1.
+servers:
+  - url: https://ssnp.example.org
+    description: Example production endpoint
+tags:
+  - name: Portal Read
+    description: Read-only portal views
+paths:
+  /api/v1/rankings/{date_utc}:
+    get:
+      tags: [Portal Read]
+      summary: Read ranking records for one UTC date
+      description: |
+        Returns ranking records computed for the requested UTC date. If ranking
+        has not been computed for that date, the response is `200` with an empty
+        `items` array.
+      operationId: getRankings
+      parameters:
+        - $ref: "#/components/parameters/DateUTCPath"
+      responses:
+        "200":
+          description: Ranking records returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RankingListResponse"
+              examples:
+                oneNode:
+                  value:
+                    date_utc: "2026-04-07"
+                    items:
+                      - node_id: "node-abc"
+                        date_utc: "2026-04-07"
+                        policy_version: "2026-04"
+                        rank_position: 1
+                        availability_score: 20
+                        finalization_score: 20
+                        chain_sync_score: 20
+                        voting_key_score: 10
+                        base_performance_score: 70
+                        decentralization_score: 0
+                        total_score: 70
+                        operator_group_id: "node-abc"
+                        reward_eligible: true
+                        computed_at: "2026-04-07T00:00:10Z"
+                empty:
+                  value:
+                    date_utc: "2026-04-08"
+                    items: []
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/v1/reward-eligibility/{date_utc}:
+    get:
+      tags: [Portal Read]
+      summary: Read reward-eligibility decisions for one UTC date
+      description: |
+        Returns reward-eligibility decisions derived from the requested date's
+        ranking records. If reward eligibility has not been computed for that
+        date, the response is `200` with an empty `items` array.
+      operationId: getRewardEligibility
+      parameters:
+        - $ref: "#/components/parameters/DateUTCPath"
+      responses:
+        "200":
+          description: Reward-eligibility records returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RewardEligibilityListResponse"
+              examples:
+                oneNode:
+                  value:
+                    date_utc: "2026-04-07"
+                    items:
+                      - node_id: "node-abc"
+                        date_utc: "2026-04-07"
+                        policy_version: "2026-04"
+                        rank_position: 1
+                        qualified: true
+                        operator_group_id: "node-abc"
+                        reward_eligible: true
+                        decided_at: "2026-04-07T00:00:10Z"
+                excluded:
+                  value:
+                    date_utc: "2026-04-07"
+                    items:
+                      - node_id: "node-def"
+                        date_utc: "2026-04-07"
+                        policy_version: "2026-04"
+                        rank_position: 2
+                        qualified: true
+                        operator_group_id: "operator-1"
+                        reward_eligible: false
+                        exclusion_reason: "same_operator_group_lower_ranked"
+                        decided_at: "2026-04-07T00:00:10Z"
+                empty:
+                  value:
+                    date_utc: "2026-04-08"
+                    items: []
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/v1/public-node-status/{date_utc}:
+    get:
+      tags: [Portal Read]
+      summary: Read public node status view for one UTC date
+      description: |
+        Returns the public-facing minimal status view for qualified-decision
+        records on the requested date. Internal diagnostics such as failure
+        reasons and operator group metadata are intentionally excluded. If the
+        date has no qualified decisions, the response is `200` with an empty
+        `items` array.
+      operationId: getPublicNodeStatus
+      parameters:
+        - $ref: "#/components/parameters/DateUTCPath"
+      responses:
+        "200":
+          description: Public node status view returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicNodeStatusListResponse"
+              examples:
+                oneNode:
+                  value:
+                    date_utc: "2026-04-07"
+                    items:
+                      - node_id: "node-abc"
+                        date_utc: "2026-04-07"
+                        qualified: true
+                        rank_position: 1
+                        reward_eligible: true
+                empty:
+                  value:
+                    date_utc: "2026-04-08"
+                    items: []
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/v1/operator-node-status/{node_id}/{date_utc}:
+    get:
+      tags: [Portal Read]
+      summary: Read operator-facing node status view for one node and UTC date
+      description: |
+        Returns the operator-facing status view for one node and one date. This
+        view includes internal diagnostic fields that are intentionally absent
+        from the public status API.
+      operationId: getOperatorNodeStatus
+      parameters:
+        - $ref: "#/components/parameters/NodeIDPath"
+        - $ref: "#/components/parameters/DateUTCPath"
+      responses:
+        "200":
+          description: Operator node status view returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorNodeStatus"
+              examples:
+                qualifiedEligible:
+                  value:
+                    node_id: "node-abc"
+                    date_utc: "2026-04-07"
+                    qualified: true
+                    rank_position: 1
+                    reward_eligible: true
+                    heartbeat_passed: true
+                    hardware_passed: true
+                    voting_key_passed: true
+                    operator_group_id: "node-abc"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+components:
+  parameters:
+    DateUTCPath:
+      name: date_utc
+      in: path
+      required: true
+      schema:
+        type: string
+        format: date
+    NodeIDPath:
+      name: node_id
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    ErrorResponse:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    RankingListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - date_utc
+        - items
+      properties:
+        date_utc:
+          type: string
+          format: date
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RankingRecord"
+    RewardEligibilityListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - date_utc
+        - items
+      properties:
+        date_utc:
+          type: string
+          format: date
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RewardEligibilityRecord"
+    PublicNodeStatusListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - date_utc
+        - items
+      properties:
+        date_utc:
+          type: string
+          format: date
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicNodeStatus"
+    RankingRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - date_utc
+        - policy_version
+        - rank_position
+        - availability_score
+        - finalization_score
+        - chain_sync_score
+        - voting_key_score
+        - base_performance_score
+        - decentralization_score
+        - total_score
+        - operator_group_id
+        - reward_eligible
+        - computed_at
+      properties:
+        node_id:
+          type: string
+        date_utc:
+          type: string
+          format: date
+        policy_version:
+          type: string
+        rank_position:
+          type: integer
+          minimum: 1
+        availability_score:
+          type: number
+          minimum: 0
+          maximum: 100
+        finalization_score:
+          type: number
+          minimum: 0
+          maximum: 100
+        chain_sync_score:
+          type: number
+          minimum: 0
+          maximum: 100
+        voting_key_score:
+          type: number
+          minimum: 0
+          maximum: 100
+        base_performance_score:
+          type: number
+          minimum: 0
+          maximum: 100
+        decentralization_score:
+          type: number
+          minimum: 0
+          maximum: 100
+        total_score:
+          type: number
+          minimum: 0
+          maximum: 100
+        operator_group_id:
+          type: string
+        reward_eligible:
+          type: boolean
+        exclusion_reason:
+          type:
+            - string
+            - "null"
+        computed_at:
+          type: string
+          format: date-time
+    RewardEligibilityRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - date_utc
+        - policy_version
+        - rank_position
+        - qualified
+        - operator_group_id
+        - reward_eligible
+        - decided_at
+      properties:
+        node_id:
+          type: string
+        date_utc:
+          type: string
+          format: date
+        policy_version:
+          type: string
+        rank_position:
+          type: integer
+          minimum: 1
+        qualified:
+          type: boolean
+        operator_group_id:
+          type: string
+        reward_eligible:
+          type: boolean
+        exclusion_reason:
+          type:
+            - string
+            - "null"
+        decided_at:
+          type: string
+          format: date-time
+    PublicNodeStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - date_utc
+        - qualified
+        - reward_eligible
+      properties:
+        node_id:
+          type: string
+        date_utc:
+          type: string
+          format: date
+        qualified:
+          type: boolean
+        rank_position:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+        reward_eligible:
+          type: boolean
+        status_reason:
+          type:
+            - string
+            - "null"
+      description: |
+        Public-facing minimal view. This schema intentionally excludes
+        `failure_reasons`, `operator_group_id`, and `exclusion_reason`.
+    OperatorNodeStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - date_utc
+        - qualified
+        - reward_eligible
+        - heartbeat_passed
+        - hardware_passed
+        - voting_key_passed
+      properties:
+        node_id:
+          type: string
+        date_utc:
+          type: string
+          format: date
+        qualified:
+          type: boolean
+        rank_position:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+        reward_eligible:
+          type: boolean
+        status_reason:
+          type:
+            - string
+            - "null"
+        failure_reasons:
+          type: array
+          items:
+            type: string
+        heartbeat_passed:
+          type: boolean
+        hardware_passed:
+          type: boolean
+        voting_key_passed:
+          type: boolean
+        operator_group_id:
+          type:
+            - string
+            - "null"
+        exclusion_reason:
+          type:
+            - string
+            - "null"
+      description: |
+        Operator-facing diagnostic view. This schema may expose fields that are
+        intentionally absent from the public status API.
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - error_code
+        - message
+      properties:
+        status:
+          type: string
+          const: error
+        error_code:
+          type: string
+          enum:
+            - invalid_method
+            - missing_required_field
+            - unknown_node_id
+            - missing_qualified_decision
+        message:
+          type: string
