@@ -20,6 +20,7 @@ type Node struct {
 	ActiveAgentKeyFingerprint string `json:"active_agent_key_fingerprint,omitempty"`
 	AgentPublicKey            string `json:"agent_public_key,omitempty"`
 	EnrollmentGeneration      int    `json:"enrollment_generation,omitempty"`
+	ValidatedRegistrationAt   string `json:"validated_registration_at,omitempty"`
 	LastHeartbeatSequence     int    `json:"last_heartbeat_sequence,omitempty"`
 	LastHeartbeatTimestamp    string `json:"last_heartbeat_timestamp,omitempty"`
 	LastPolicyVersion         string `json:"last_policy_version,omitempty"`
@@ -30,6 +31,12 @@ type CheckEvent struct {
 	NodeID        string `json:"node_id"`
 	OverallPassed bool   `json:"overall_passed"`
 	CheckedAt     string `json:"checked_at"`
+}
+
+type HeartbeatEvent struct {
+	NodeID             string `json:"node_id"`
+	HeartbeatTimestamp string `json:"heartbeat_timestamp"`
+	SequenceNumber     int    `json:"sequence_number"`
 }
 
 type TelemetryEvent struct {
@@ -199,6 +206,7 @@ type NodesConfig struct {
 type snapshot struct {
 	Nodes                  []Node                      `json:"nodes"`
 	CheckEvents            []CheckEvent                `json:"check_events"`
+	HeartbeatEvents        []HeartbeatEvent            `json:"heartbeat_events"`
 	TelemetryEvents        []TelemetryEvent            `json:"telemetry_events"`
 	ProbeEvents            []ProbeEvent                `json:"probe_events"`
 	DailySummaries         []DailyQualificationSummary `json:"daily_summaries"`
@@ -218,6 +226,7 @@ type Store struct {
 	mu                 sync.RWMutex
 	nodes              map[string]Node
 	checkEvents        map[string]CheckEvent
+	heartbeatEvents    []HeartbeatEvent
 	telemetryEvents    []TelemetryEvent
 	probeEvents        map[string]ProbeEvent
 	dailySummaries     map[string]DailyQualificationSummary
@@ -244,6 +253,7 @@ func New(seedNodes []Node) *Store {
 	return &Store{
 		nodes:              nodes,
 		checkEvents:        map[string]CheckEvent{},
+		heartbeatEvents:    nil,
 		probeEvents:        map[string]ProbeEvent{},
 		dailySummaries:     map[string]DailyQualificationSummary{},
 		qualifiedDecisions: map[string]QualifiedDecisionRecord{},
@@ -285,6 +295,7 @@ func LoadNodesConfig(path string) ([]Node, error) {
 		node.ActiveAgentKeyFingerprint = ""
 		node.AgentPublicKey = ""
 		node.EnrollmentGeneration = 0
+		node.ValidatedRegistrationAt = ""
 		node.LastHeartbeatSequence = 0
 		node.LastHeartbeatTimestamp = ""
 		node.LastPolicyVersion = ""
@@ -376,6 +387,7 @@ func (s *Store) applySnapshot(snap snapshot) error {
 		seedNode.ActiveAgentKeyFingerprint = node.ActiveAgentKeyFingerprint
 		seedNode.AgentPublicKey = node.AgentPublicKey
 		seedNode.EnrollmentGeneration = node.EnrollmentGeneration
+		seedNode.ValidatedRegistrationAt = node.ValidatedRegistrationAt
 		seedNode.LastHeartbeatSequence = node.LastHeartbeatSequence
 		seedNode.LastHeartbeatTimestamp = node.LastHeartbeatTimestamp
 		seedNode.LastPolicyVersion = node.LastPolicyVersion
@@ -389,6 +401,14 @@ func (s *Store) applySnapshot(snap snapshot) error {
 			return errors.New("snapshot check event contains unknown node_id")
 		}
 		s.checkEvents[event.EventID] = event
+	}
+
+	s.heartbeatEvents = nil
+	for _, event := range snap.HeartbeatEvents {
+		if _, ok := seedNodes[event.NodeID]; !ok {
+			return errors.New("snapshot heartbeat event contains unknown node_id")
+		}
+		s.heartbeatEvents = append(s.heartbeatEvents, event)
 	}
 
 	s.telemetryEvents = nil
@@ -517,6 +537,17 @@ func (s *Store) snapshot() snapshot {
 		return checks[i].EventID < checks[j].EventID
 	})
 
+	heartbeats := append([]HeartbeatEvent(nil), s.heartbeatEvents...)
+	sort.Slice(heartbeats, func(i, j int) bool {
+		if heartbeats[i].HeartbeatTimestamp == heartbeats[j].HeartbeatTimestamp {
+			if heartbeats[i].NodeID == heartbeats[j].NodeID {
+				return heartbeats[i].SequenceNumber < heartbeats[j].SequenceNumber
+			}
+			return heartbeats[i].NodeID < heartbeats[j].NodeID
+		}
+		return heartbeats[i].HeartbeatTimestamp < heartbeats[j].HeartbeatTimestamp
+	})
+
 	probes := make([]ProbeEvent, 0, len(s.probeEvents))
 	for _, event := range s.probeEvents {
 		probes = append(probes, event)
@@ -634,6 +665,7 @@ func (s *Store) snapshot() snapshot {
 	return snapshot{
 		Nodes:                  nodes,
 		CheckEvents:            checks,
+		HeartbeatEvents:        heartbeats,
 		TelemetryEvents:        telemetry,
 		ProbeEvents:            probes,
 		DailySummaries:         dailySummaries,
@@ -691,6 +723,12 @@ func (s *Store) GetCheckEvent(eventID string) (CheckEvent, bool) {
 	defer s.mu.RUnlock()
 	event, ok := s.checkEvents[eventID]
 	return event, ok
+}
+
+func (s *Store) SaveHeartbeatEvent(event HeartbeatEvent) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.heartbeatEvents = append(s.heartbeatEvents, event)
 }
 
 func (s *Store) SaveProbeEvent(event ProbeEvent) bool {
@@ -884,6 +922,26 @@ func (s *Store) GetLatestOperatorGroupEvidenceForNode(nodeID string) (OperatorGr
 	return latest, found
 }
 
+func (s *Store) GetLatestOperatorGroupEvidenceForNodeAndDate(nodeID, dateUTC string) (OperatorGroupEvidence, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var latest OperatorGroupEvidence
+	found := false
+	for _, evidence := range s.operatorGroups {
+		if evidence.NodeID != nodeID {
+			continue
+		}
+		if dateUTC != "" && !strings.HasPrefix(evidence.ObservedAt, dateUTC) {
+			continue
+		}
+		if !found || evidence.ObservedAt > latest.ObservedAt {
+			latest = evidence
+			found = true
+		}
+	}
+	return latest, found
+}
+
 func dailySummaryKey(nodeID, dateUTC string) string {
 	return nodeID + "\x00" + dateUTC
 }
@@ -921,6 +979,46 @@ func (s *Store) LatestCheckEventForNode(nodeID string) (CheckEvent, bool) {
 	return latest, found
 }
 
+func (s *Store) LatestCheckEventForNodeAndDate(nodeID, dateUTC string) (CheckEvent, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var latest CheckEvent
+	found := false
+	for _, event := range s.checkEvents {
+		if event.NodeID != nodeID {
+			continue
+		}
+		if dateUTC != "" && !strings.HasPrefix(event.CheckedAt, dateUTC) {
+			continue
+		}
+		if !found || event.CheckedAt > latest.CheckedAt {
+			latest = event
+			found = true
+		}
+	}
+	return latest, found
+}
+
+func (s *Store) LatestHeartbeatEventForNodeAndDate(nodeID, dateUTC string) (HeartbeatEvent, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var latest HeartbeatEvent
+	found := false
+	for _, event := range s.heartbeatEvents {
+		if event.NodeID != nodeID {
+			continue
+		}
+		if dateUTC != "" && !strings.HasPrefix(event.HeartbeatTimestamp, dateUTC) {
+			continue
+		}
+		if !found || event.HeartbeatTimestamp > latest.HeartbeatTimestamp {
+			latest = event
+			found = true
+		}
+	}
+	return latest, found
+}
+
 func (s *Store) SaveVotingKeyEvidence(evidence VotingKeyEvidence) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -938,6 +1036,26 @@ func (s *Store) GetLatestVotingKeyEvidenceForNode(nodeID string) (VotingKeyEvide
 	found := false
 	for _, evidence := range s.votingKeyEvidence {
 		if evidence.NodeID != nodeID {
+			continue
+		}
+		if !found || evidence.ObservedAt > latest.ObservedAt {
+			latest = evidence
+			found = true
+		}
+	}
+	return latest, found
+}
+
+func (s *Store) GetLatestVotingKeyEvidenceForNodeAndDate(nodeID, dateUTC string) (VotingKeyEvidence, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var latest VotingKeyEvidence
+	found := false
+	for _, evidence := range s.votingKeyEvidence {
+		if evidence.NodeID != nodeID {
+			continue
+		}
+		if dateUTC != "" && !strings.HasPrefix(evidence.ObservedAt, dateUTC) {
 			continue
 		}
 		if !found || evidence.ObservedAt > latest.ObservedAt {

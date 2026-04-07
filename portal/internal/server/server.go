@@ -237,6 +237,9 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	node.ActiveAgentKeyFingerprint = fingerprint
 	node.AgentPublicKey = publicKey
 	node.EnrollmentGeneration++
+	if strings.TrimSpace(node.ValidatedRegistrationAt) == "" {
+		node.ValidatedRegistrationAt = time.Now().UTC().Format(time.RFC3339)
+	}
 	node.LastPolicyVersion = s.policy.PolicyVersion
 	node.LastHeartbeatSequence = 0
 	s.store.SaveNode(node)
@@ -303,6 +306,11 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	node.LastHeartbeatTimestamp = payload.HeartbeatTimestamp
 	node.LastPolicyVersion = s.policy.PolicyVersion
 	s.store.SaveNode(node)
+	s.store.SaveHeartbeatEvent(store.HeartbeatEvent{
+		NodeID:             payload.NodeID,
+		HeartbeatTimestamp: payload.HeartbeatTimestamp,
+		SequenceNumber:     payload.SequenceNumber,
+	})
 	if dateUTC, err := datePart(payload.HeartbeatTimestamp); err == nil {
 		s.updateQualificationArtifacts(payload.NodeID, dateUTC)
 	}
@@ -1009,25 +1017,23 @@ func (s *Server) computeQualifiedDecisionRecord(nodeID string, summary store.Dai
 	}
 
 	heartbeatPassed := false
-	if strings.TrimSpace(node.LastHeartbeatTimestamp) == "" {
+	if _, ok := s.store.LatestHeartbeatEventForNodeAndDate(nodeID, summary.DateUTC); ok {
+		heartbeatPassed = true
+	} else if strings.TrimSpace(node.LastHeartbeatTimestamp) == "" {
 		failureReasons = append(failureReasons, "heartbeat_missing")
 	} else {
 		lastSeen, err := time.Parse(time.RFC3339, node.LastHeartbeatTimestamp)
 		if err != nil || lastSeen.UTC().Format("2006-01-02") != summary.DateUTC {
 			failureReasons = append(failureReasons, "heartbeat_missing")
-		} else if time.Since(lastSeen.UTC()) >= s.cfg.HeartbeatStaleAfter {
-			failureReasons = append(failureReasons, "heartbeat_stale")
 		} else {
 			heartbeatPassed = true
 		}
 	}
 
 	hardwarePassed := false
-	if latestCheck, ok := s.store.LatestCheckEventForNode(nodeID); !ok {
+	if latestCheck, ok := s.store.LatestCheckEventForNodeAndDate(nodeID, summary.DateUTC); !ok {
 		failureReasons = append(failureReasons, "hardware_check_missing")
 	} else if strings.TrimSpace(latestCheck.CheckedAt) == "" {
-		failureReasons = append(failureReasons, "hardware_check_missing")
-	} else if checkedDateUTC, err := datePart(latestCheck.CheckedAt); err != nil || checkedDateUTC != summary.DateUTC {
 		failureReasons = append(failureReasons, "hardware_check_missing")
 	} else if !latestCheck.OverallPassed {
 		failureReasons = append(failureReasons, "hardware_check_failed")
@@ -1036,9 +1042,7 @@ func (s *Server) computeQualifiedDecisionRecord(nodeID string, summary store.Dai
 	}
 
 	votingKeyPassed := false
-	if latestEvidence, ok := s.store.GetLatestVotingKeyEvidenceForNode(nodeID); !ok {
-		failureReasons = append(failureReasons, "voting_key_evidence_missing")
-	} else if observedDateUTC, err := datePart(latestEvidence.ObservedAt); err != nil || observedDateUTC != summary.DateUTC {
+	if latestEvidence, ok := s.store.GetLatestVotingKeyEvidenceForNodeAndDate(nodeID, summary.DateUTC); !ok {
 		failureReasons = append(failureReasons, "voting_key_evidence_missing")
 	} else if !latestEvidence.VotingKeyPresent {
 		failureReasons = append(failureReasons, "voting_key_not_present")
@@ -1096,6 +1100,14 @@ func (s *Server) rebuildRankings(dateUTC string) {
 		if records[i].BasePerformanceScore == records[j].BasePerformanceScore {
 			if records[i].FinalizationScore == records[j].FinalizationScore {
 				if records[i].AvailabilityScore == records[j].AvailabilityScore {
+					iNode, _ := s.store.GetNode(records[i].NodeID)
+					jNode, _ := s.store.GetNode(records[j].NodeID)
+					if registrationTimeLess(iNode.ValidatedRegistrationAt, jNode.ValidatedRegistrationAt) {
+						return true
+					}
+					if registrationTimeLess(jNode.ValidatedRegistrationAt, iNode.ValidatedRegistrationAt) {
+						return false
+					}
 					return records[i].NodeID < records[j].NodeID
 				}
 				return records[i].AvailabilityScore > records[j].AvailabilityScore
@@ -1128,14 +1140,40 @@ func (s *Server) rebuildRankings(dateUTC string) {
 	s.rebuildRewardEligibility(dateUTC, rankings)
 }
 
+func registrationTimeLess(left, right string) bool {
+	leftTime, leftOK := parseRFC3339(left)
+	rightTime, rightOK := parseRFC3339(right)
+	switch {
+	case leftOK && rightOK:
+		return leftTime.Before(rightTime)
+	case leftOK:
+		return true
+	case rightOK:
+		return false
+	default:
+		return false
+	}
+}
+
+func parseRFC3339(raw string) (time.Time, bool) {
+	if strings.TrimSpace(raw) == "" {
+		return time.Time{}, false
+	}
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed.UTC(), true
+}
+
 func (s *Server) rebuildRewardEligibility(dateUTC string, rankings []store.RankingRecord) {
 	records := make([]store.RewardEligibilityRecord, 0, len(rankings))
 	decidedAt := time.Now().UTC().Format(time.RFC3339)
 	seenGroups := map[string]struct{}{}
 	for _, ranking := range rankings {
 		operatorGroupID := ranking.NodeID
-		if evidence, ok := s.store.GetLatestOperatorGroupEvidenceForNode(ranking.NodeID); ok {
-			if observedDateUTC, err := datePart(evidence.ObservedAt); err == nil && observedDateUTC == dateUTC && strings.TrimSpace(evidence.OperatorGroupID) != "" {
+		if evidence, ok := s.store.GetLatestOperatorGroupEvidenceForNodeAndDate(ranking.NodeID, dateUTC); ok {
+			if strings.TrimSpace(evidence.OperatorGroupID) != "" {
 				operatorGroupID = evidence.OperatorGroupID
 			}
 		}

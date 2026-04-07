@@ -107,6 +107,10 @@ func TestPortalHandlerFlow(t *testing.T) {
 	if enrollRec.Code != http.StatusOK {
 		t.Fatalf("enroll status = %d, want 200, body=%s", enrollRec.Code, enrollRec.Body.String())
 	}
+	node, _ := srv.store.GetNode("node-abc")
+	if node.ValidatedRegistrationAt == "" {
+		t.Fatal("expected validated registration time after enroll")
+	}
 
 	heartbeatPayload := map[string]any{
 		"node_id":                 "node-abc",
@@ -999,6 +1003,245 @@ func TestRankingOrdersQualifiedNodesDeterministically(t *testing.T) {
 	}
 	if operatorPayload.NodeID != "node-def" || operatorPayload.RewardEligible || operatorPayload.ExclusionReason != "same_operator_group_lower_ranked" {
 		t.Fatalf("operator payload = %#v, want excluded node-def", operatorPayload)
+	}
+}
+
+func TestRankingTieBreakUsesValidatedRegistrationTime(t *testing.T) {
+	dir := t.TempDir()
+	nodesPath := filepath.Join(dir, "nodes.yaml")
+	if err := os.WriteFile(nodesPath, []byte(`nodes:
+  - node_id: "node-abc"
+    display_name: "Node ABC"
+    operator_email: "ops@example.invalid"
+    enabled: true
+  - node_id: "node-def"
+    display_name: "Node DEF"
+    operator_email: "ops@example.invalid"
+    enabled: true
+`), 0o600); err != nil {
+		t.Fatalf("WriteFile(nodes) error = %v", err)
+	}
+	srv, err := New(Config{
+		ListenAddr:              "127.0.0.1:8080",
+		PolicyPath:              testPolicyPath(),
+		NodesConfigPath:         nodesPath,
+		StatePath:               filepath.Join(dir, "portal-state.json"),
+		AllowedClockSkewSeconds: 300,
+		NotificationEmailTo:     "ops@example.invalid",
+		Notifier:                &notifier.Recorder{},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	handler := srv.Handler()
+	now := time.Now().UTC()
+	dateUTC := now.Format("2006-01-02")
+	nodeABC, _ := srv.store.GetNode("node-abc")
+	nodeABC.ValidatedRegistrationAt = now.Add(2 * time.Minute).Format(time.RFC3339)
+	nodeABC.LastHeartbeatTimestamp = now.Format(time.RFC3339)
+	srv.store.SaveNode(nodeABC)
+	nodeDEF, _ := srv.store.GetNode("node-def")
+	nodeDEF.ValidatedRegistrationAt = now.Add(1 * time.Minute).Format(time.RFC3339)
+	nodeDEF.LastHeartbeatTimestamp = now.Format(time.RFC3339)
+	srv.store.SaveNode(nodeDEF)
+	for _, nodeID := range []string{"node-abc", "node-def"} {
+		srv.store.SaveCheckEvent(store.CheckEvent{
+			EventID:       "check-reg-" + nodeID,
+			NodeID:        nodeID,
+			OverallPassed: true,
+			CheckedAt:     now.Format(time.RFC3339),
+		})
+	}
+	for _, probe := range []map[string]any{
+		{
+			"schema_version":             "1",
+			"probe_id":                   "probe-reg-abc-1",
+			"node_id":                    "node-abc",
+			"region_id":                  "ap-sg-1",
+			"observed_at":                now.Format(time.RFC3339),
+			"endpoint":                   "https://node-abc.example.net:3001",
+			"availability_up":            true,
+			"finalized_lag_blocks":       1,
+			"chain_lag_blocks":           2,
+			"source_height":              100,
+			"peer_height":                102,
+			"measurement_window_seconds": 30,
+		},
+		{
+			"schema_version":             "1",
+			"probe_id":                   "probe-reg-abc-2",
+			"node_id":                    "node-abc",
+			"region_id":                  "us-va-1",
+			"observed_at":                now.Add(5 * time.Second).Format(time.RFC3339),
+			"endpoint":                   "https://node-abc.example.net:3001",
+			"availability_up":            true,
+			"finalized_lag_blocks":       2,
+			"chain_lag_blocks":           5,
+			"source_height":              101,
+			"peer_height":                103,
+			"measurement_window_seconds": 30,
+		},
+		{
+			"schema_version":             "1",
+			"probe_id":                   "probe-reg-def-1",
+			"node_id":                    "node-def",
+			"region_id":                  "ap-sg-1",
+			"observed_at":                now.Format(time.RFC3339),
+			"endpoint":                   "https://node-def.example.net:3001",
+			"availability_up":            true,
+			"finalized_lag_blocks":       1,
+			"chain_lag_blocks":           2,
+			"source_height":              100,
+			"peer_height":                102,
+			"measurement_window_seconds": 30,
+		},
+		{
+			"schema_version":             "1",
+			"probe_id":                   "probe-reg-def-2",
+			"node_id":                    "node-def",
+			"region_id":                  "us-va-1",
+			"observed_at":                now.Add(5 * time.Second).Format(time.RFC3339),
+			"endpoint":                   "https://node-def.example.net:3001",
+			"availability_up":            true,
+			"finalized_lag_blocks":       2,
+			"chain_lag_blocks":           5,
+			"source_height":              101,
+			"peer_height":                103,
+			"measurement_window_seconds": 30,
+		},
+	} {
+		if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/probes/events", probe); rec.Code != http.StatusOK {
+			t.Fatalf("probe status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+		}
+	}
+	for _, evidence := range []map[string]any{
+		{
+			"node_id":                    "node-abc",
+			"evidence_ref":               "vk-reg-abc",
+			"observed_at":                now.Add(10 * time.Second).Format(time.RFC3339),
+			"current_epoch":              12,
+			"voting_key_present":         true,
+			"voting_key_valid_for_epoch": true,
+			"source":                     "external_probe",
+		},
+		{
+			"node_id":                    "node-def",
+			"evidence_ref":               "vk-reg-def",
+			"observed_at":                now.Add(10 * time.Second).Format(time.RFC3339),
+			"current_epoch":              12,
+			"voting_key_present":         true,
+			"voting_key_valid_for_epoch": true,
+			"source":                     "external_probe",
+		},
+	} {
+		if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/voting-key-evidence", evidence); rec.Code != http.StatusOK {
+			t.Fatalf("voting key evidence status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+		}
+	}
+	rankings := srv.store.ListRankingRecordsByDate(dateUTC)
+	if len(rankings) != 2 {
+		t.Fatalf("ranking count = %d, want 2", len(rankings))
+	}
+	if rankings[0].NodeID != "node-def" || rankings[1].NodeID != "node-abc" {
+		t.Fatalf("rankings = %#v, want earlier validated registration first", rankings)
+	}
+}
+
+func TestHistoricalQualificationRecomputeUsesSameDayEvidence(t *testing.T) {
+	srv := newTestServer(t)
+	dayOne := time.Date(2026, 4, 6, 10, 0, 0, 0, time.UTC)
+	dayTwo := dayOne.Add(24 * time.Hour)
+
+	node, _ := srv.store.GetNode("node-abc")
+	node.LastHeartbeatTimestamp = dayTwo.Format(time.RFC3339)
+	srv.store.SaveNode(node)
+	srv.store.SaveHeartbeatEvent(store.HeartbeatEvent{
+		NodeID:             "node-abc",
+		HeartbeatTimestamp: dayOne.Format(time.RFC3339),
+		SequenceNumber:     1,
+	})
+	srv.store.SaveHeartbeatEvent(store.HeartbeatEvent{
+		NodeID:             "node-abc",
+		HeartbeatTimestamp: dayTwo.Format(time.RFC3339),
+		SequenceNumber:     2,
+	})
+	srv.store.SaveCheckEvent(store.CheckEvent{
+		EventID:       "check-day-one",
+		NodeID:        "node-abc",
+		OverallPassed: true,
+		CheckedAt:     dayOne.Format(time.RFC3339),
+	})
+	srv.store.SaveCheckEvent(store.CheckEvent{
+		EventID:       "check-day-two",
+		NodeID:        "node-abc",
+		OverallPassed: false,
+		CheckedAt:     dayTwo.Format(time.RFC3339),
+	})
+	if !srv.store.SaveVotingKeyEvidence(store.VotingKeyEvidence{
+		EvidenceRef:            "vk-day-one",
+		NodeID:                 "node-abc",
+		ObservedAt:             dayOne.Add(5 * time.Minute).Format(time.RFC3339),
+		CurrentEpoch:           10,
+		VotingKeyPresent:       true,
+		VotingKeyValidForEpoch: true,
+		Source:                 "external_probe",
+	}) {
+		t.Fatal("expected day-one voting key evidence save")
+	}
+	if !srv.store.SaveVotingKeyEvidence(store.VotingKeyEvidence{
+		EvidenceRef:            "vk-day-two",
+		NodeID:                 "node-abc",
+		ObservedAt:             dayTwo.Add(5 * time.Minute).Format(time.RFC3339),
+		CurrentEpoch:           11,
+		VotingKeyPresent:       true,
+		VotingKeyValidForEpoch: false,
+		Source:                 "external_probe",
+	}) {
+		t.Fatal("expected day-two voting key evidence save")
+	}
+	for _, probe := range []store.ProbeEvent{
+		{
+			ProbeID:                  "probe-day-one-1",
+			NodeID:                   "node-abc",
+			RegionID:                 "ap-sg-1",
+			ObservedAt:               dayOne.Format(time.RFC3339),
+			Endpoint:                 "https://node.example.net:3001",
+			AvailabilityUp:           true,
+			FinalizedLagBlocks:       intPtr(1),
+			ChainLagBlocks:           intPtr(2),
+			SourceHeight:             intPtr(100),
+			PeerHeight:               intPtr(102),
+			MeasurementWindowSeconds: 30,
+		},
+		{
+			ProbeID:                  "probe-day-one-2",
+			NodeID:                   "node-abc",
+			RegionID:                 "us-va-1",
+			ObservedAt:               dayOne.Add(5 * time.Minute).Format(time.RFC3339),
+			Endpoint:                 "https://node.example.net:3001",
+			AvailabilityUp:           true,
+			FinalizedLagBlocks:       intPtr(2),
+			ChainLagBlocks:           intPtr(5),
+			SourceHeight:             intPtr(101),
+			PeerHeight:               intPtr(103),
+			MeasurementWindowSeconds: 30,
+		},
+	} {
+		if !srv.store.SaveProbeEvent(probe) {
+			t.Fatalf("duplicate probe save: %#v", probe)
+		}
+	}
+
+	srv.updateQualificationArtifacts("node-abc", "2026-04-06")
+	decision, ok := srv.store.GetQualifiedDecisionRecord("node-abc", "2026-04-06")
+	if !ok {
+		t.Fatal("expected day-one qualified decision")
+	}
+	if !decision.Qualified {
+		t.Fatalf("decision = %#v, want day-one qualified", decision)
+	}
+	if containsReason(decision.FailureReasons, "hardware_check_missing") || containsReason(decision.FailureReasons, "voting_key_invalid") {
+		t.Fatalf("decision = %#v, want same-day evidence only", decision)
 	}
 }
 

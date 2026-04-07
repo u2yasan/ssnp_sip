@@ -32,9 +32,15 @@ func TestLoadNodesConfigAndSnapshotRoundTrip(t *testing.T) {
 	}
 	node, _ := st.GetNode("node-abc")
 	node.ActiveAgentKeyFingerprint = "fp"
+	node.ValidatedRegistrationAt = "2026-04-06T09:59:00Z"
 	node.LastHeartbeatSequence = 2
 	node.LastHeartbeatTimestamp = "2026-04-06T10:00:00Z"
 	st.SaveNode(node)
+	st.SaveHeartbeatEvent(HeartbeatEvent{
+		NodeID:             "node-abc",
+		HeartbeatTimestamp: "2026-04-06T10:00:00Z",
+		SequenceNumber:     2,
+	})
 	st.AddTelemetryEvent(TelemetryEvent{
 		NodeID:             "node-abc",
 		TelemetryTimestamp: "2026-04-06T10:01:00Z",
@@ -68,8 +74,11 @@ func TestLoadNodesConfigAndSnapshotRoundTrip(t *testing.T) {
 		t.Fatalf("Load(reloaded) error = %v", err)
 	}
 	got, _ := reloaded.GetNode("node-abc")
-	if got.ActiveAgentKeyFingerprint != "fp" || got.LastHeartbeatSequence != 2 {
+	if got.ActiveAgentKeyFingerprint != "fp" || got.LastHeartbeatSequence != 2 || got.ValidatedRegistrationAt != "2026-04-06T09:59:00Z" {
 		t.Fatalf("reloaded node = %#v", got)
+	}
+	if got, ok := reloaded.LatestHeartbeatEventForNodeAndDate("node-abc", "2026-04-06"); !ok || got.SequenceNumber != 2 {
+		t.Fatalf("heartbeat event = %#v, want sequence 2", got)
 	}
 	if len(reloaded.ListTelemetry("node-abc", "")) != 1 {
 		t.Fatal("expected telemetry event after reload")
