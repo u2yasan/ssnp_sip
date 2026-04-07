@@ -39,3 +39,13 @@ The repository includes dedicated smoke support tests:
 - `TestSmokeE2E`
 
 These protect smoke assumptions before the full end-to-end path breaks.
+
+## CI
+
+GitHub Actions workflow `.github/workflows/go-test.yml` runs:
+
+- `agent`: `go test ./...` and `go build ./...`
+- `portal`: `go test ./...` and `go build ./...`
+- `smoke`: `make smoke`
+
+If local behavior and CI behavior diverge, treat the workflow as broken and fix the command path rather than introducing a second smoke path.

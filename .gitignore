@@ -2,3 +2,4 @@
 agent/.cache/
 portal/.cache/
 portal-state.json
+!testdata/smoke/portal-state.json
