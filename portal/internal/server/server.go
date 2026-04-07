@@ -75,6 +75,15 @@ type operatorNodeStatusView struct {
 	ExclusionReason string   `json:"exclusion_reason,omitempty"`
 }
 
+type antiConcentrationEvidenceView struct {
+	NodeID                      string `json:"node_id"`
+	DateUTC                     string `json:"date_utc"`
+	OperatorGroupID             string `json:"operator_group_id,omitempty"`
+	RegistrableDomain           string `json:"registrable_domain,omitempty"`
+	SharedControlPlaneID        string `json:"shared_control_plane_id,omitempty"`
+	SharedControlClassification string `json:"shared_control_classification,omitempty"`
+}
+
 func New(cfg Config) (*Server, error) {
 	doc, err := policy.Load(cfg.PolicyPath)
 	if err != nil {
@@ -162,6 +171,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/operator-group-evidence", s.handleOperatorGroupEvidence)
 	mux.HandleFunc("/api/v1/rankings/", s.handleRankingRead)
 	mux.HandleFunc("/api/v1/reward-eligibility/", s.handleRewardEligibilityRead)
+	mux.HandleFunc("/api/v1/anti-concentration-evidence/", s.handleAntiConcentrationEvidenceRead)
 	mux.HandleFunc("/api/v1/reward-allocations/", s.handleRewardAllocationRead)
 	mux.HandleFunc("/api/v1/public-node-status/", s.handlePublicNodeStatusRead)
 	mux.HandleFunc("/api/v1/operator-node-status/", s.handleOperatorNodeStatusRead)

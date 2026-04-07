@@ -8,6 +8,7 @@ SSNP Program Agent と結合するための最小 Go portal stub です。
 - `GET /api/v1/agent/telemetry`
 - `GET /api/v1/rankings/{date_utc}`
 - `GET /api/v1/reward-eligibility/{date_utc}`
+- `GET /api/v1/anti-concentration-evidence/{date_utc}`
 - `GET /api/v1/reward-allocations/{date_utc}`
 - `GET /api/v1/public-node-status/{date_utc}`
 - `GET /api/v1/operator-node-status/{node_id}/{date_utc}`
@@ -40,6 +41,7 @@ SSNP Program Agent と結合するための最小 Go portal stub です。
 - ranking は `S = 0.7 * B + 0.3 * D` を使います
 - `reward-eligibility` は same operator group と same registrable domain を hard filter として使います
 - `reward-eligibility` は shared control plane evidence も hard filter として使います
+- `reward-eligibility` は exclusion provenance も返します
 - `reward-allocations` は `--nominal-daily-pool` と participation adjustment / rank band allocation を使って計算されます
 - `operator-node-status` は `unknown_node_id` と `missing_qualified_decision` を `404` で返します
 - `public-node-status` は公開最小 view であり、`failure_reasons` や `operator_group_id` を返しません
@@ -131,6 +133,7 @@ curl "http://127.0.0.1:8080/api/v1/agent/telemetry?node_id=node-abc"
 curl "http://127.0.0.1:8080/api/v1/agent/telemetry?view=latest"
 curl "http://127.0.0.1:8080/api/v1/rankings/2026-04-07"
 curl "http://127.0.0.1:8080/api/v1/reward-eligibility/2026-04-07"
+curl "http://127.0.0.1:8080/api/v1/anti-concentration-evidence/2026-04-07"
 curl "http://127.0.0.1:8080/api/v1/reward-allocations/2026-04-07"
 curl "http://127.0.0.1:8080/api/v1/public-node-status/2026-04-07"
 curl "http://127.0.0.1:8080/api/v1/operator-node-status/node-abc/2026-04-07"

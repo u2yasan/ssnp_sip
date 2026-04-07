@@ -40,6 +40,44 @@ func (s *Server) handleRewardEligibilityRead(w http.ResponseWriter, r *http.Requ
 	})
 }
 
+func (s *Server) handleAntiConcentrationEvidenceRead(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusBadRequest, "invalid_method", "invalid method")
+		return
+	}
+	dateUTC := strings.TrimPrefix(r.URL.Path, "/api/v1/anti-concentration-evidence/")
+	dateUTC = strings.TrimSpace(dateUTC)
+	if _, err := time.Parse("2006-01-02", dateUTC); err != nil {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "invalid date_utc")
+		return
+	}
+	items := make([]antiConcentrationEvidenceView, 0)
+	for _, node := range s.store.ListNodes() {
+		view := antiConcentrationEvidenceView{
+			NodeID:  node.NodeID,
+			DateUTC: dateUTC,
+		}
+		if evidence, ok := s.store.GetLatestOperatorGroupEvidenceForNodeAndDate(node.NodeID, dateUTC); ok {
+			view.OperatorGroupID = evidence.OperatorGroupID
+		}
+		if evidence, ok := s.store.GetLatestDomainEvidenceForNodeAndDate(node.NodeID, dateUTC); ok {
+			view.RegistrableDomain = evidence.RegistrableDomain
+		}
+		if evidence, ok := s.store.GetLatestSharedControlPlaneEvidenceForNodeAndDate(node.NodeID, dateUTC); ok {
+			view.SharedControlPlaneID = evidence.ControlPlaneID
+			view.SharedControlClassification = evidence.Classification
+		}
+		if view.OperatorGroupID == "" && view.RegistrableDomain == "" && view.SharedControlPlaneID == "" {
+			continue
+		}
+		items = append(items, view)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"date_utc": dateUTC,
+		"items":    items,
+	})
+}
+
 func (s *Server) handleRewardAllocationRead(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusBadRequest, "invalid_method", "invalid method")

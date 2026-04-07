@@ -137,7 +137,43 @@ paths:
                         operator_group_id: "operator-1"
                         reward_eligible: false
                         exclusion_reason: "same_operator_group_lower_ranked"
+                        excluded_operator_group_id: "operator-1"
                         decided_at: "2026-04-07T00:00:10Z"
+                empty:
+                  value:
+                    date_utc: "2026-04-08"
+                    items: []
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/v1/anti-concentration-evidence/{date_utc}:
+    get:
+      tags: [Portal Read]
+      summary: Read anti-concentration evidence for one UTC date
+      description: |
+        Returns the latest anti-concentration evidence observed for each node on
+        the requested date. If no evidence exists for that date, the response
+        is `200` with an empty `items` array.
+      operationId: getAntiConcentrationEvidence
+      parameters:
+        - $ref: "#/components/parameters/DateUTCPath"
+      responses:
+        "200":
+          description: Anti-concentration evidence returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AntiConcentrationEvidenceListResponse"
+              examples:
+                oneNode:
+                  value:
+                    date_utc: "2026-04-07"
+                    items:
+                      - node_id: "node-abc"
+                        date_utc: "2026-04-07"
+                        operator_group_id: "operator-1"
+                        registrable_domain: "example.net"
+                        shared_control_plane_id: "provider-x-ops"
+                        shared_control_classification: "managed_provider"
                 empty:
                   value:
                     date_utc: "2026-04-08"
@@ -312,6 +348,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RewardEligibilityRecord"
+    AntiConcentrationEvidenceListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - date_utc
+        - items
+      properties:
+        date_utc:
+          type: string
+          format: date
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AntiConcentrationEvidenceView"
     RewardAllocationListResponse:
       type: object
       additionalProperties: false
@@ -441,9 +491,53 @@ components:
           type:
             - string
             - "null"
+        excluded_operator_group_id:
+          type:
+            - string
+            - "null"
+        excluded_registrable_domain:
+          type:
+            - string
+            - "null"
+        excluded_control_plane_id:
+          type:
+            - string
+            - "null"
+        excluded_classification:
+          type:
+            - string
+            - "null"
         decided_at:
           type: string
           format: date-time
+    AntiConcentrationEvidenceView:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - date_utc
+      properties:
+        node_id:
+          type: string
+        date_utc:
+          type: string
+          format: date
+        operator_group_id:
+          type:
+            - string
+            - "null"
+        registrable_domain:
+          type:
+            - string
+            - "null"
+        shared_control_plane_id:
+          type:
+            - string
+            - "null"
+        shared_control_classification:
+          type:
+            - string
+            - "null"
     RewardAllocationRecord:
       type: object
       additionalProperties: false

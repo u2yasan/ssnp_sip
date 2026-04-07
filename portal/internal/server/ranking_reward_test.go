@@ -123,6 +123,13 @@ func TestQualifiedNodeGeneratesBasePerformanceAndRanking(t *testing.T) {
 		t.Fatalf("reward payload = %#v, want eligible node-abc", rewardPayload)
 	}
 
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/anti-concentration-evidence/"+dateUTC, nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("anti-concentration evidence read status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/public-node-status/"+dateUTC, nil)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -699,6 +706,9 @@ func TestDomainEvidenceExcludesLowerRankedNodeFromRewardEligibility(t *testing.T
 	if reward[1].RewardEligible || reward[1].ExclusionReason != "same_registrable_domain_lower_ranked" {
 		t.Fatalf("reward[1] = %#v, want lower ranked node excluded by domain", reward[1])
 	}
+	if reward[1].ExcludedRegistrableDomain != "example.net" {
+		t.Fatalf("reward[1] = %#v, want excluded registrable domain provenance", reward[1])
+	}
 }
 
 func TestSharedControlPlaneEvidenceExcludesLowerRankedNodeFromRewardEligibility(t *testing.T) {
@@ -776,6 +786,26 @@ func TestSharedControlPlaneEvidenceExcludesLowerRankedNodeFromRewardEligibility(
 	}
 	if reward[1].RewardEligible || reward[1].ExclusionReason != "same_shared_control_plane_lower_ranked" {
 		t.Fatalf("reward[1] = %#v, want lower ranked node excluded by shared control plane", reward[1])
+	}
+	if reward[1].ExcludedControlPlaneID != "provider-x-ops" || reward[1].ExcludedClassification != "shared_certificate_admin" {
+		t.Fatalf("reward[1] = %#v, want shared control plane provenance", reward[1])
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/anti-concentration-evidence/"+dateUTC, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("anti-concentration evidence read status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var evidencePayload struct {
+		DateUTC string                          `json:"date_utc"`
+		Items   []antiConcentrationEvidenceView `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &evidencePayload); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if evidencePayload.DateUTC != dateUTC || len(evidencePayload.Items) != 2 {
+		t.Fatalf("evidence payload = %#v, want two anti-concentration evidence items", evidencePayload)
 	}
 }
 
@@ -990,6 +1020,7 @@ func TestReadEndpointsReturnEmptyCollectionsForUnknownDate(t *testing.T) {
 	}{
 		{name: "rankings", path: "/api/v1/rankings/" + dateUTC},
 		{name: "reward eligibility", path: "/api/v1/reward-eligibility/" + dateUTC},
+		{name: "anti concentration evidence", path: "/api/v1/anti-concentration-evidence/" + dateUTC},
 		{name: "reward allocations", path: "/api/v1/reward-allocations/" + dateUTC},
 		{name: "public node status", path: "/api/v1/public-node-status/" + dateUTC},
 	} {
@@ -1031,11 +1062,13 @@ func TestReadEndpointsRejectInvalidMethodAndDate(t *testing.T) {
 	}{
 		{name: "rankings invalid method", method: http.MethodPost, path: "/api/v1/rankings/2026-04-07", wantCode: http.StatusBadRequest, wantError: "invalid_method"},
 		{name: "reward eligibility invalid method", method: http.MethodPost, path: "/api/v1/reward-eligibility/2026-04-07", wantCode: http.StatusBadRequest, wantError: "invalid_method"},
+		{name: "anti concentration evidence invalid method", method: http.MethodPost, path: "/api/v1/anti-concentration-evidence/2026-04-07", wantCode: http.StatusBadRequest, wantError: "invalid_method"},
 		{name: "reward allocations invalid method", method: http.MethodPost, path: "/api/v1/reward-allocations/2026-04-07", wantCode: http.StatusBadRequest, wantError: "invalid_method"},
 		{name: "public node status invalid method", method: http.MethodPost, path: "/api/v1/public-node-status/2026-04-07", wantCode: http.StatusBadRequest, wantError: "invalid_method"},
 		{name: "operator node status invalid method", method: http.MethodPost, path: "/api/v1/operator-node-status/node-abc/2026-04-07", wantCode: http.StatusBadRequest, wantError: "invalid_method"},
 		{name: "rankings invalid date", method: http.MethodGet, path: "/api/v1/rankings/not-a-date", wantCode: http.StatusBadRequest, wantError: "missing_required_field"},
 		{name: "reward eligibility invalid date", method: http.MethodGet, path: "/api/v1/reward-eligibility/not-a-date", wantCode: http.StatusBadRequest, wantError: "missing_required_field"},
+		{name: "anti concentration evidence invalid date", method: http.MethodGet, path: "/api/v1/anti-concentration-evidence/not-a-date", wantCode: http.StatusBadRequest, wantError: "missing_required_field"},
 		{name: "reward allocations invalid date", method: http.MethodGet, path: "/api/v1/reward-allocations/not-a-date", wantCode: http.StatusBadRequest, wantError: "missing_required_field"},
 		{name: "public node status invalid date", method: http.MethodGet, path: "/api/v1/public-node-status/not-a-date", wantCode: http.StatusBadRequest, wantError: "missing_required_field"},
 		{name: "operator node status invalid date", method: http.MethodGet, path: "/api/v1/operator-node-status/node-abc/not-a-date", wantCode: http.StatusBadRequest, wantError: "missing_required_field"},

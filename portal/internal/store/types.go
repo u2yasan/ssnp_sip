@@ -131,15 +131,19 @@ type RankingRecord struct {
 }
 
 type RewardEligibilityRecord struct {
-	NodeID          string `json:"node_id"`
-	DateUTC         string `json:"date_utc"`
-	PolicyVersion   string `json:"policy_version"`
-	RankPosition    int    `json:"rank_position"`
-	Qualified       bool   `json:"qualified"`
-	OperatorGroupID string `json:"operator_group_id"`
-	RewardEligible  bool   `json:"reward_eligible"`
-	ExclusionReason string `json:"exclusion_reason,omitempty"`
-	DecidedAt       string `json:"decided_at"`
+	NodeID                    string `json:"node_id"`
+	DateUTC                   string `json:"date_utc"`
+	PolicyVersion             string `json:"policy_version"`
+	RankPosition              int    `json:"rank_position"`
+	Qualified                 bool   `json:"qualified"`
+	OperatorGroupID           string `json:"operator_group_id"`
+	RewardEligible            bool   `json:"reward_eligible"`
+	ExclusionReason           string `json:"exclusion_reason,omitempty"`
+	ExcludedOperatorGroupID   string `json:"excluded_operator_group_id,omitempty"`
+	ExcludedRegistrableDomain string `json:"excluded_registrable_domain,omitempty"`
+	ExcludedControlPlaneID    string `json:"excluded_control_plane_id,omitempty"`
+	ExcludedClassification    string `json:"excluded_classification,omitempty"`
+	DecidedAt                 string `json:"decided_at"`
 }
 
 type RewardAllocationRecord struct {

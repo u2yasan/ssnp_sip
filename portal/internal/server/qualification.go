@@ -384,40 +384,52 @@ func (s *Server) rebuildRewardEligibility(dateUTC string, rankings []store.Ranki
 		}
 		rewardEligible := true
 		exclusionReason := ""
+		excludedOperatorGroupID := ""
+		excludedRegistrableDomain := ""
+		excludedControlPlaneID := ""
+		excludedClassification := ""
 		if _, exists := seenGroups[operatorGroupID]; exists {
 			rewardEligible = false
 			exclusionReason = "same_operator_group_lower_ranked"
+			excludedOperatorGroupID = operatorGroupID
 		} else {
 			seenGroups[operatorGroupID] = struct{}{}
 		}
 		if evidence, ok := s.store.GetLatestDomainEvidenceForNodeAndDate(ranking.NodeID, dateUTC); ok && strings.TrimSpace(evidence.RegistrableDomain) != "" {
 			domain := strings.ToLower(strings.TrimSpace(evidence.RegistrableDomain))
-			if _, exists := seenDomains[domain]; exists {
+			if _, exists := seenDomains[domain]; exists && exclusionReason == "" {
 				rewardEligible = false
 				exclusionReason = "same_registrable_domain_lower_ranked"
+				excludedRegistrableDomain = domain
 			} else {
 				seenDomains[domain] = struct{}{}
 			}
 		}
 		if evidence, ok := s.store.GetLatestSharedControlPlaneEvidenceForNodeAndDate(ranking.NodeID, dateUTC); ok && strings.TrimSpace(evidence.ControlPlaneID) != "" {
 			controlPlaneID := strings.TrimSpace(evidence.ControlPlaneID)
-			if _, exists := seenControlPlanes[controlPlaneID]; exists {
+			if _, exists := seenControlPlanes[controlPlaneID]; exists && exclusionReason == "" {
 				rewardEligible = false
 				exclusionReason = "same_shared_control_plane_lower_ranked"
+				excludedControlPlaneID = controlPlaneID
+				excludedClassification = evidence.Classification
 			} else {
 				seenControlPlanes[controlPlaneID] = struct{}{}
 			}
 		}
 		records = append(records, store.RewardEligibilityRecord{
-			NodeID:          ranking.NodeID,
-			DateUTC:         dateUTC,
-			PolicyVersion:   ranking.PolicyVersion,
-			RankPosition:    ranking.RankPosition,
-			Qualified:       true,
-			OperatorGroupID: operatorGroupID,
-			RewardEligible:  rewardEligible,
-			ExclusionReason: exclusionReason,
-			DecidedAt:       decidedAt,
+			NodeID:                    ranking.NodeID,
+			DateUTC:                   dateUTC,
+			PolicyVersion:             ranking.PolicyVersion,
+			RankPosition:              ranking.RankPosition,
+			Qualified:                 true,
+			OperatorGroupID:           operatorGroupID,
+			RewardEligible:            rewardEligible,
+			ExclusionReason:           exclusionReason,
+			ExcludedOperatorGroupID:   excludedOperatorGroupID,
+			ExcludedRegistrableDomain: excludedRegistrableDomain,
+			ExcludedControlPlaneID:    excludedControlPlaneID,
+			ExcludedClassification:    excludedClassification,
+			DecidedAt:                 decidedAt,
 		})
 	}
 	s.store.ReplaceRewardEligibilityRecordsForDate(dateUTC, records)
