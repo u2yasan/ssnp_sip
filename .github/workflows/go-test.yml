@@ -1,0 +1,33 @@
+name: go-test
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: agent/go.sum
+      - run: go test ./...
+
+  portal:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: portal/go.sum
+      - run: go test ./...
