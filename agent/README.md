@@ -56,3 +56,4 @@ env GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod go build ./...
 - `internal/runtime/enrollment.go` は enroll、checks 実行、request signing を持ちます
 - `internal/runtime/heartbeat_loop.go` は heartbeat payload、retry/backoff、sequence 更新を持ちます
 - `internal/runtime/warning_checks.go` は telemetry、portal recovery、warning state、voting key / certificate check を持ちます
+- `internal/runtime/*_test.go` も enrollment / heartbeat / warning / run / helpers に分割しています
