@@ -11,26 +11,27 @@ import (
 )
 
 type snapshot struct {
-	Nodes                    []Node                      `json:"nodes"`
-	EnrollmentChallenges     []EnrollmentChallenge       `json:"enrollment_challenges"`
-	CheckEvents              []CheckEvent                `json:"check_events"`
-	HeartbeatEvents          []HeartbeatEvent            `json:"heartbeat_events"`
-	TelemetryEvents          []TelemetryEvent            `json:"telemetry_events"`
-	ProbeEvents              []ProbeEvent                `json:"probe_events"`
-	DailySummaries           []DailyQualificationSummary `json:"daily_summaries"`
-	QualifiedDecisions       []QualifiedDecisionRecord   `json:"qualified_decisions"`
-	BasePerformanceRecords   []BasePerformanceRecord     `json:"base_performance_records"`
-	RankingRecords           []RankingRecord             `json:"ranking_records"`
-	RewardEligibility        []RewardEligibilityRecord   `json:"reward_eligibility"`
-	RewardAllocations        []RewardAllocationRecord    `json:"reward_allocations"`
-	OperatorGroupEvidence    []OperatorGroupEvidence     `json:"operator_group_evidence"`
-	VotingKeyEvidence        []VotingKeyEvidence         `json:"voting_key_evidence"`
-	DecentralizationEvidence []DecentralizationEvidence  `json:"decentralization_evidence"`
-	DomainEvidence           []DomainEvidence            `json:"domain_evidence"`
-	LatestTelemetry          []LatestTelemetry           `json:"latest_telemetry"`
-	AlertStates              []AlertState                `json:"alert_states"`
-	NotificationDeliveries   []NotificationDelivery      `json:"notification_deliveries"`
-	OperationalEvents        []OperationalEvent          `json:"operational_events"`
+	Nodes                      []Node                       `json:"nodes"`
+	EnrollmentChallenges       []EnrollmentChallenge        `json:"enrollment_challenges"`
+	CheckEvents                []CheckEvent                 `json:"check_events"`
+	HeartbeatEvents            []HeartbeatEvent             `json:"heartbeat_events"`
+	TelemetryEvents            []TelemetryEvent             `json:"telemetry_events"`
+	ProbeEvents                []ProbeEvent                 `json:"probe_events"`
+	DailySummaries             []DailyQualificationSummary  `json:"daily_summaries"`
+	QualifiedDecisions         []QualifiedDecisionRecord    `json:"qualified_decisions"`
+	BasePerformanceRecords     []BasePerformanceRecord      `json:"base_performance_records"`
+	RankingRecords             []RankingRecord              `json:"ranking_records"`
+	RewardEligibility          []RewardEligibilityRecord    `json:"reward_eligibility"`
+	RewardAllocations          []RewardAllocationRecord     `json:"reward_allocations"`
+	OperatorGroupEvidence      []OperatorGroupEvidence      `json:"operator_group_evidence"`
+	VotingKeyEvidence          []VotingKeyEvidence          `json:"voting_key_evidence"`
+	DecentralizationEvidence   []DecentralizationEvidence   `json:"decentralization_evidence"`
+	DomainEvidence             []DomainEvidence             `json:"domain_evidence"`
+	SharedControlPlaneEvidence []SharedControlPlaneEvidence `json:"shared_control_plane_evidence"`
+	LatestTelemetry            []LatestTelemetry            `json:"latest_telemetry"`
+	AlertStates                []AlertState                 `json:"alert_states"`
+	NotificationDeliveries     []NotificationDelivery       `json:"notification_deliveries"`
+	OperationalEvents          []OperationalEvent           `json:"operational_events"`
 }
 
 func LoadNodesConfig(path string) ([]Node, error) {
@@ -276,6 +277,13 @@ func (s *Store) applySnapshot(snap snapshot) error {
 		}
 		s.domainEvidence[evidence.EvidenceRef] = evidence
 	}
+	s.controlPlane = map[string]SharedControlPlaneEvidence{}
+	for _, evidence := range snap.SharedControlPlaneEvidence {
+		if _, ok := seedNodes[evidence.NodeID]; !ok {
+			return errors.New("snapshot shared control plane evidence contains unknown node_id")
+		}
+		s.controlPlane[evidence.EvidenceRef] = evidence
+	}
 
 	s.latestTelemetry = map[string]LatestTelemetry{}
 	for _, event := range snap.LatestTelemetry {
@@ -468,6 +476,14 @@ func (s *Store) snapshot() snapshot {
 		return domainEvidence[i].EvidenceRef < domainEvidence[j].EvidenceRef
 	})
 
+	sharedControlPlaneEvidence := make([]SharedControlPlaneEvidence, 0, len(s.controlPlane))
+	for _, evidence := range s.controlPlane {
+		sharedControlPlaneEvidence = append(sharedControlPlaneEvidence, evidence)
+	}
+	sort.Slice(sharedControlPlaneEvidence, func(i, j int) bool {
+		return sharedControlPlaneEvidence[i].EvidenceRef < sharedControlPlaneEvidence[j].EvidenceRef
+	})
+
 	latest := make([]LatestTelemetry, 0, len(s.latestTelemetry))
 	for _, event := range s.latestTelemetry {
 		latest = append(latest, event)
@@ -498,25 +514,26 @@ func (s *Store) snapshot() snapshot {
 	telemetry := append([]TelemetryEvent(nil), s.telemetryEvents...)
 
 	return snapshot{
-		Nodes:                    nodes,
-		EnrollmentChallenges:     challenges,
-		CheckEvents:              checks,
-		HeartbeatEvents:          heartbeats,
-		TelemetryEvents:          telemetry,
-		ProbeEvents:              probes,
-		DailySummaries:           dailySummaries,
-		QualifiedDecisions:       qualifiedDecisions,
-		BasePerformanceRecords:   basePerformance,
-		RankingRecords:           rankingRecords,
-		RewardEligibility:        rewardEligibility,
-		RewardAllocations:        rewardAllocations,
-		OperatorGroupEvidence:    operatorGroupEvidence,
-		VotingKeyEvidence:        votingKeyEvidence,
-		DecentralizationEvidence: decentralizationEvidence,
-		DomainEvidence:           domainEvidence,
-		LatestTelemetry:          latest,
-		AlertStates:              alerts,
-		NotificationDeliveries:   deliveries,
-		OperationalEvents:        operational,
+		Nodes:                      nodes,
+		EnrollmentChallenges:       challenges,
+		CheckEvents:                checks,
+		HeartbeatEvents:            heartbeats,
+		TelemetryEvents:            telemetry,
+		ProbeEvents:                probes,
+		DailySummaries:             dailySummaries,
+		QualifiedDecisions:         qualifiedDecisions,
+		BasePerformanceRecords:     basePerformance,
+		RankingRecords:             rankingRecords,
+		RewardEligibility:          rewardEligibility,
+		RewardAllocations:          rewardAllocations,
+		OperatorGroupEvidence:      operatorGroupEvidence,
+		VotingKeyEvidence:          votingKeyEvidence,
+		DecentralizationEvidence:   decentralizationEvidence,
+		DomainEvidence:             domainEvidence,
+		SharedControlPlaneEvidence: sharedControlPlaneEvidence,
+		LatestTelemetry:            latest,
+		AlertStates:                alerts,
+		NotificationDeliveries:     deliveries,
+		OperationalEvents:          operational,
 	}
 }

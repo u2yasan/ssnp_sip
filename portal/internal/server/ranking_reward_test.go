@@ -701,6 +701,84 @@ func TestDomainEvidenceExcludesLowerRankedNodeFromRewardEligibility(t *testing.T
 	}
 }
 
+func TestSharedControlPlaneEvidenceExcludesLowerRankedNodeFromRewardEligibility(t *testing.T) {
+	dir := t.TempDir()
+	nodesPath := filepath.Join(dir, "nodes.yaml")
+	if err := os.WriteFile(nodesPath, []byte(`nodes:
+  - node_id: "node-abc"
+    display_name: "Node ABC"
+    operator_email: "ops@example.invalid"
+    enabled: true
+  - node_id: "node-def"
+    display_name: "Node DEF"
+    operator_email: "ops@example.invalid"
+    enabled: true
+`), 0o600); err != nil {
+		t.Fatalf("WriteFile(nodes) error = %v", err)
+	}
+	srv, err := New(Config{
+		ListenAddr:              "127.0.0.1:8080",
+		PolicyPath:              testPolicyPath(),
+		NodesConfigPath:         nodesPath,
+		StatePath:               filepath.Join(dir, "portal-state.json"),
+		AllowedClockSkewSeconds: 300,
+		NotificationEmailTo:     "ops@example.invalid",
+		Notifier:                &notifier.Recorder{},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	handler := srv.Handler()
+	now := time.Now().UTC()
+	dateUTC := now.Format("2006-01-02")
+	for _, nodeID := range []string{"node-abc", "node-def"} {
+		node, _ := srv.store.GetNode(nodeID)
+		node.ValidatedRegistrationAt = now.Add(-(observationWindow + time.Hour)).Format(time.RFC3339)
+		node.LastHeartbeatTimestamp = now.Format(time.RFC3339)
+		srv.store.SaveNode(node)
+		srv.store.SaveHeartbeatEvent(store.HeartbeatEvent{NodeID: nodeID, HeartbeatTimestamp: now.Add(-10 * time.Minute).Format(time.RFC3339), SequenceNumber: 1})
+		srv.store.SaveHeartbeatEvent(store.HeartbeatEvent{NodeID: nodeID, HeartbeatTimestamp: now.Add(-5 * time.Minute).Format(time.RFC3339), SequenceNumber: 2})
+		srv.store.SaveCheckEvent(store.CheckEvent{EventID: "check-cp-" + nodeID, NodeID: nodeID, OverallPassed: true, CheckedAt: now.Format(time.RFC3339)})
+	}
+	for _, probe := range []map[string]any{
+		{"schema_version": "1", "probe_id": "probe-cp-abc-1", "node_id": "node-abc", "region_id": "ap-sg-1", "observed_at": now.Format(time.RFC3339), "endpoint": "https://node-abc.example.net:3001", "availability_up": true, "finalized_lag_blocks": 1, "chain_lag_blocks": 2, "source_height": 100, "peer_height": 102, "measurement_window_seconds": 30},
+		{"schema_version": "1", "probe_id": "probe-cp-abc-2", "node_id": "node-abc", "region_id": "us-va-1", "observed_at": now.Add(5 * time.Second).Format(time.RFC3339), "endpoint": "https://node-abc.example.net:3001", "availability_up": true, "finalized_lag_blocks": 2, "chain_lag_blocks": 5, "source_height": 101, "peer_height": 103, "measurement_window_seconds": 30},
+		{"schema_version": "1", "probe_id": "probe-cp-def-1", "node_id": "node-def", "region_id": "ap-sg-1", "observed_at": now.Format(time.RFC3339), "endpoint": "https://node-def.example.net:3001", "availability_up": true, "finalized_lag_blocks": 2, "chain_lag_blocks": 5, "source_height": 100, "peer_height": 102, "measurement_window_seconds": 30},
+		{"schema_version": "1", "probe_id": "probe-cp-def-2", "node_id": "node-def", "region_id": "us-va-1", "observed_at": now.Add(5 * time.Second).Format(time.RFC3339), "endpoint": "https://node-def.example.net:3001", "availability_up": true, "finalized_lag_blocks": 2, "chain_lag_blocks": 5, "source_height": 101, "peer_height": 103, "measurement_window_seconds": 30},
+	} {
+		if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/probes/events", probe); rec.Code != http.StatusOK {
+			t.Fatalf("probe status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+		}
+	}
+	for _, evidence := range []map[string]any{
+		{"node_id": "node-abc", "evidence_ref": "vk-cp-abc", "observed_at": now.Add(10 * time.Second).Format(time.RFC3339), "current_epoch": 12, "voting_key_present": true, "voting_key_valid_for_epoch": true, "source": "external_probe"},
+		{"node_id": "node-def", "evidence_ref": "vk-cp-def", "observed_at": now.Add(10 * time.Second).Format(time.RFC3339), "current_epoch": 12, "voting_key_present": true, "voting_key_valid_for_epoch": true, "source": "external_probe"},
+	} {
+		if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/voting-key-evidence", evidence); rec.Code != http.StatusOK {
+			t.Fatalf("voting key evidence status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+		}
+	}
+	for _, evidence := range []map[string]any{
+		{"node_id": "node-abc", "evidence_ref": "cp-abc", "observed_at": now.Add(15 * time.Second).Format(time.RFC3339), "control_plane_id": "provider-x-ops", "classification": "managed_provider", "source": "manual_review"},
+		{"node_id": "node-def", "evidence_ref": "cp-def", "observed_at": now.Add(15 * time.Second).Format(time.RFC3339), "control_plane_id": "provider-x-ops", "classification": "shared_certificate_admin", "source": "manual_review"},
+	} {
+		if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/shared-control-plane-evidence", evidence); rec.Code != http.StatusOK {
+			t.Fatalf("shared control plane evidence status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+		}
+	}
+
+	reward := srv.store.ListRewardEligibilityRecordsByDate(dateUTC)
+	if len(reward) != 2 {
+		t.Fatalf("reward eligibility = %#v, want two records", reward)
+	}
+	if !reward[0].RewardEligible {
+		t.Fatalf("reward[0] = %#v, want top ranked node still eligible", reward[0])
+	}
+	if reward[1].RewardEligible || reward[1].ExclusionReason != "same_shared_control_plane_lower_ranked" {
+		t.Fatalf("reward[1] = %#v, want lower ranked node excluded by shared control plane", reward[1])
+	}
+}
+
 func TestRewardAllocationsUseParticipationRateAndBandSplit(t *testing.T) {
 	dir := t.TempDir()
 	nodesPath := filepath.Join(dir, "nodes.yaml")

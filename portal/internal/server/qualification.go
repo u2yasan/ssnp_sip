@@ -374,6 +374,7 @@ func (s *Server) rebuildRewardEligibility(dateUTC string, rankings []store.Ranki
 	decidedAt := time.Now().UTC().Format(time.RFC3339)
 	seenGroups := map[string]struct{}{}
 	seenDomains := map[string]struct{}{}
+	seenControlPlanes := map[string]struct{}{}
 	for _, ranking := range rankings {
 		operatorGroupID := ranking.NodeID
 		if evidence, ok := s.store.GetLatestOperatorGroupEvidenceForNodeAndDate(ranking.NodeID, dateUTC); ok && strings.TrimSpace(evidence.OperatorGroupID) != "" {
@@ -396,6 +397,15 @@ func (s *Server) rebuildRewardEligibility(dateUTC string, rankings []store.Ranki
 				exclusionReason = "same_registrable_domain_lower_ranked"
 			} else {
 				seenDomains[domain] = struct{}{}
+			}
+		}
+		if evidence, ok := s.store.GetLatestSharedControlPlaneEvidenceForNodeAndDate(ranking.NodeID, dateUTC); ok && strings.TrimSpace(evidence.ControlPlaneID) != "" {
+			controlPlaneID := strings.TrimSpace(evidence.ControlPlaneID)
+			if _, exists := seenControlPlanes[controlPlaneID]; exists {
+				rewardEligible = false
+				exclusionReason = "same_shared_control_plane_lower_ranked"
+			} else {
+				seenControlPlanes[controlPlaneID] = struct{}{}
 			}
 		}
 		records = append(records, store.RewardEligibilityRecord{

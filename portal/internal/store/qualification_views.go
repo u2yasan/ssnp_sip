@@ -339,3 +339,33 @@ func (s *Store) GetLatestDomainEvidenceForNodeAndDate(nodeID, dateUTC string) (D
 	}
 	return latest, found
 }
+
+func (s *Store) SaveSharedControlPlaneEvidence(evidence SharedControlPlaneEvidence) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.controlPlane[evidence.EvidenceRef]; exists {
+		return false
+	}
+	s.controlPlane[evidence.EvidenceRef] = evidence
+	return true
+}
+
+func (s *Store) GetLatestSharedControlPlaneEvidenceForNodeAndDate(nodeID, dateUTC string) (SharedControlPlaneEvidence, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var latest SharedControlPlaneEvidence
+	found := false
+	for _, evidence := range s.controlPlane {
+		if evidence.NodeID != nodeID {
+			continue
+		}
+		if dateUTC != "" && !strings.HasPrefix(evidence.ObservedAt, dateUTC) {
+			continue
+		}
+		if !found || evidence.ObservedAt > latest.ObservedAt {
+			latest = evidence
+			found = true
+		}
+	}
+	return latest, found
+}

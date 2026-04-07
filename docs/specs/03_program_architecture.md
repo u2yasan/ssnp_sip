@@ -51,6 +51,7 @@ The current stub also derives:
 - qualified decisions from probe evidence, heartbeat state, hardware checks, voting-key evidence, and the 72-hour observation window;
 - ranking records from `S = 0.7 * B + 0.3 * D`;
 - reward-eligibility decisions from ranking plus anti-concentration filters;
+- anti-concentration evidence currently includes operator-group, registrable-domain, and shared-control-plane write inputs;
 - reward-allocation records from reward eligibility plus daily pool configuration.
 
 This remains a stub architecture:

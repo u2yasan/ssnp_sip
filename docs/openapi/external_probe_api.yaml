@@ -136,6 +136,30 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "409":
           $ref: "#/components/responses/ErrorResponse"
+  /api/v1/shared-control-plane-evidence:
+    post:
+      tags: [Probe]
+      summary: Submit shared-control-plane evidence for one node
+      operationId: submitSharedControlPlaneEvidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SharedControlPlaneEvidence"
+      responses:
+        "200":
+          description: Shared-control-plane evidence accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceAcceptedResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
   /api/v1/probes/daily-summaries/{node_id}/{date_utc}:
     get:
       tags: [Probe]
@@ -385,6 +409,35 @@ components:
           format: date-time
         registrable_domain:
           type: string
+        source:
+          type: string
+    SharedControlPlaneEvidence:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - evidence_ref
+        - observed_at
+        - control_plane_id
+        - classification
+        - source
+      properties:
+        node_id:
+          type: string
+        evidence_ref:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        control_plane_id:
+          type: string
+        classification:
+          type: string
+          enum:
+            - managed_provider
+            - operational_contractor
+            - shared_certificate_admin
+            - material_overlap
         source:
           type: string
     DailyQualificationSummary:

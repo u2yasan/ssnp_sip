@@ -158,6 +158,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/voting-key-evidence", s.handleVotingKeyEvidence)
 	mux.HandleFunc("/api/v1/decentralization-evidence", s.handleDecentralizationEvidence)
 	mux.HandleFunc("/api/v1/domain-evidence", s.handleDomainEvidence)
+	mux.HandleFunc("/api/v1/shared-control-plane-evidence", s.handleSharedControlPlaneEvidence)
 	mux.HandleFunc("/api/v1/operator-group-evidence", s.handleOperatorGroupEvidence)
 	mux.HandleFunc("/api/v1/rankings/", s.handleRankingRead)
 	mux.HandleFunc("/api/v1/reward-eligibility/", s.handleRewardEligibilityRead)

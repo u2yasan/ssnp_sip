@@ -241,3 +241,63 @@ func (s *Server) handleDomainEvidence(w http.ResponseWriter, r *http.Request) {
 		"received_at":  time.Now().UTC().Format(time.RFC3339),
 	})
 }
+
+func (s *Server) handleSharedControlPlaneEvidence(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusBadRequest, "invalid_method", "invalid method")
+		return
+	}
+	payload, err := decodeObject(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	nodeID := stringField(payload, "node_id")
+	evidenceRef := stringField(payload, "evidence_ref")
+	observedAt := stringField(payload, "observed_at")
+	controlPlaneID := strings.TrimSpace(stringField(payload, "control_plane_id"))
+	classification := strings.TrimSpace(stringField(payload, "classification"))
+	source := stringField(payload, "source")
+	if nodeID == "" || evidenceRef == "" || observedAt == "" || controlPlaneID == "" || classification == "" || source == "" {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "missing required field")
+		return
+	}
+	switch classification {
+	case "managed_provider", "operational_contractor", "shared_certificate_admin", "material_overlap":
+	default:
+		writeError(w, http.StatusBadRequest, "invalid_classification", "invalid classification")
+		return
+	}
+	if _, ok := s.store.GetNode(nodeID); !ok {
+		writeError(w, http.StatusNotFound, "unknown_node_id", "unknown node")
+		return
+	}
+	if err := s.validateTimestamp(observedAt); err != nil {
+		writeError(w, http.StatusBadRequest, "stale_timestamp", err.Error())
+		return
+	}
+	if !s.store.SaveSharedControlPlaneEvidence(store.SharedControlPlaneEvidence{
+		EvidenceRef:    evidenceRef,
+		NodeID:         nodeID,
+		ObservedAt:     observedAt,
+		ControlPlaneID: controlPlaneID,
+		Classification: classification,
+		Source:         source,
+	}) {
+		writeError(w, http.StatusConflict, "duplicate_evidence_ref", "duplicate evidence_ref")
+		return
+	}
+	if dateUTC, err := datePart(observedAt); err == nil {
+		s.rebuildRewardEligibility(dateUTC, s.store.ListRankingRecordsByDate(dateUTC))
+	}
+	if err := s.persist(); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_persist_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":       "accepted",
+		"evidence_ref": evidenceRef,
+		"node_id":      nodeID,
+		"received_at":  time.Now().UTC().Format(time.RFC3339),
+	})
+}

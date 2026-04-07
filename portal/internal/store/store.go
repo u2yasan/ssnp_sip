@@ -20,6 +20,7 @@ type Store struct {
 	votingKeyEvidence  map[string]VotingKeyEvidence
 	decentralization   map[string]DecentralizationEvidence
 	domainEvidence     map[string]DomainEvidence
+	controlPlane       map[string]SharedControlPlaneEvidence
 	latestTelemetry    map[string]LatestTelemetry
 	alertStates        map[string]AlertState
 	deliveries         []NotificationDelivery
@@ -50,6 +51,7 @@ func New(seedNodes []Node) *Store {
 		votingKeyEvidence:  map[string]VotingKeyEvidence{},
 		decentralization:   map[string]DecentralizationEvidence{},
 		domainEvidence:     map[string]DomainEvidence{},
+		controlPlane:       map[string]SharedControlPlaneEvidence{},
 		latestTelemetry:    map[string]LatestTelemetry{},
 		alertStates:        map[string]AlertState{},
 	}

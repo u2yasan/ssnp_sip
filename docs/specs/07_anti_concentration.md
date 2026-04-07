@@ -30,6 +30,11 @@ Remaining slots are backfilled by the next highest-ranked independent nodes.
 Domain alone is not sufficient evidence for all group-classification cases,
 but same-domain exclusion is still retained as a hard reward-selection filter.
 
+Current v0.1 portal stub additionally accepts shared-control-plane evidence
+with classifications such as `managed_provider`, `operational_contractor`,
+`shared_certificate_admin`, and `material_overlap`, and applies a hard
+`max 1 reward-eligible node per control_plane_id` filter.
+
 ## Design Warning
 The real risk is not that the rule is "too strict."
 The real risk is allowing obvious multi-slot capture under different labels.

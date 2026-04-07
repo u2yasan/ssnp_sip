@@ -199,6 +199,15 @@ type DomainEvidence struct {
 	Source            string `json:"source"`
 }
 
+type SharedControlPlaneEvidence struct {
+	EvidenceRef    string `json:"evidence_ref"`
+	NodeID         string `json:"node_id"`
+	ObservedAt     string `json:"observed_at"`
+	ControlPlaneID string `json:"control_plane_id"`
+	Classification string `json:"classification"`
+	Source         string `json:"source"`
+}
+
 type LatestTelemetry struct {
 	NodeID             string `json:"node_id"`
 	WarningCode        string `json:"warning_code"`

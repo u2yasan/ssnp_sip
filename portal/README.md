@@ -18,6 +18,7 @@ SSNP Program Agent と結合するための最小 Go portal stub です。
 - `POST /api/v1/agent/telemetry`
 - `POST /api/v1/decentralization-evidence`
 - `POST /api/v1/domain-evidence`
+- `POST /api/v1/shared-control-plane-evidence`
 
 制約:
 
@@ -38,6 +39,7 @@ SSNP Program Agent と結合するための最小 Go portal stub です。
 - ranking の同点解消順は `finalization score`、`availability score`、`validated registration time`、`node_id` です
 - ranking は `S = 0.7 * B + 0.3 * D` を使います
 - `reward-eligibility` は same operator group と same registrable domain を hard filter として使います
+- `reward-eligibility` は shared control plane evidence も hard filter として使います
 - `reward-allocations` は `--nominal-daily-pool` と participation adjustment / rank band allocation を使って計算されます
 - `operator-node-status` は `unknown_node_id` と `missing_qualified_decision` を `404` で返します
 - `public-node-status` は公開最小 view であり、`failure_reasons` や `operator_group_id` を返しません
