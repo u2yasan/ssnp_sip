@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -45,6 +46,30 @@ type Server struct {
 	policy   policy.Document
 	store    *store.Store
 	notifier notifier.Notifier
+}
+
+type publicNodeStatusView struct {
+	NodeID         string `json:"node_id"`
+	DateUTC        string `json:"date_utc"`
+	Qualified      bool   `json:"qualified"`
+	RankPosition   *int   `json:"rank_position,omitempty"`
+	RewardEligible bool   `json:"reward_eligible"`
+	StatusReason   string `json:"status_reason,omitempty"`
+}
+
+type operatorNodeStatusView struct {
+	NodeID          string   `json:"node_id"`
+	DateUTC         string   `json:"date_utc"`
+	Qualified       bool     `json:"qualified"`
+	RankPosition    *int     `json:"rank_position,omitempty"`
+	RewardEligible  bool     `json:"reward_eligible"`
+	StatusReason    string   `json:"status_reason,omitempty"`
+	FailureReasons  []string `json:"failure_reasons,omitempty"`
+	HeartbeatPassed bool     `json:"heartbeat_passed"`
+	HardwarePassed  bool     `json:"hardware_passed"`
+	VotingKeyPassed bool     `json:"voting_key_passed"`
+	OperatorGroupID string   `json:"operator_group_id,omitempty"`
+	ExclusionReason string   `json:"exclusion_reason,omitempty"`
 }
 
 func New(cfg Config) (*Server, error) {
@@ -124,6 +149,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/probes/events", s.handleProbeEvents)
 	mux.HandleFunc("/api/v1/probes/daily-summaries/", s.handleDailyProbeSummary)
 	mux.HandleFunc("/api/v1/voting-key-evidence", s.handleVotingKeyEvidence)
+	mux.HandleFunc("/api/v1/operator-group-evidence", s.handleOperatorGroupEvidence)
+	mux.HandleFunc("/api/v1/rankings/", s.handleRankingRead)
+	mux.HandleFunc("/api/v1/reward-eligibility/", s.handleRewardEligibilityRead)
+	mux.HandleFunc("/api/v1/public-node-status/", s.handlePublicNodeStatusRead)
+	mux.HandleFunc("/api/v1/operator-node-status/", s.handleOperatorNodeStatusRead)
 	return mux
 }
 
@@ -207,6 +237,9 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	node.ActiveAgentKeyFingerprint = fingerprint
 	node.AgentPublicKey = publicKey
 	node.EnrollmentGeneration++
+	if strings.TrimSpace(node.ValidatedRegistrationAt) == "" {
+		node.ValidatedRegistrationAt = time.Now().UTC().Format(time.RFC3339)
+	}
 	node.LastPolicyVersion = s.policy.PolicyVersion
 	node.LastHeartbeatSequence = 0
 	s.store.SaveNode(node)
@@ -273,6 +306,14 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	node.LastHeartbeatTimestamp = payload.HeartbeatTimestamp
 	node.LastPolicyVersion = s.policy.PolicyVersion
 	s.store.SaveNode(node)
+	s.store.SaveHeartbeatEvent(store.HeartbeatEvent{
+		NodeID:             payload.NodeID,
+		HeartbeatTimestamp: payload.HeartbeatTimestamp,
+		SequenceNumber:     payload.SequenceNumber,
+	})
+	if dateUTC, err := datePart(payload.HeartbeatTimestamp); err == nil {
+		s.updateQualificationArtifacts(payload.NodeID, dateUTC)
+	}
 	if err := s.persist(); err != nil {
 		writeError(w, http.StatusInternalServerError, "state_persist_failed", err.Error())
 		return
@@ -530,9 +571,7 @@ func (s *Server) handleProbeEvents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "stale_timestamp", err.Error())
 		return
 	}
-	summary := s.computeDailyQualificationSummary(nodeID, dateUTC)
-	s.store.SaveDailyQualificationSummary(summary)
-	s.store.SaveQualifiedDecisionRecord(s.computeQualifiedDecisionRecord(nodeID, summary))
+	s.updateQualificationArtifacts(nodeID, dateUTC)
 	if err := s.persist(); err != nil {
 		writeError(w, http.StatusInternalServerError, "state_persist_failed", err.Error())
 		return
@@ -640,6 +679,150 @@ func (s *Server) handleVotingKeyEvidence(w http.ResponseWriter, r *http.Request)
 		"node_id":      nodeID,
 		"received_at":  time.Now().UTC().Format(time.RFC3339),
 	})
+}
+
+func (s *Server) handleOperatorGroupEvidence(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusBadRequest, "invalid_method", "invalid method")
+		return
+	}
+	payload, err := decodeObject(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	nodeID := stringField(payload, "node_id")
+	evidenceRef := stringField(payload, "evidence_ref")
+	operatorGroupID := stringField(payload, "operator_group_id")
+	observedAt := stringField(payload, "observed_at")
+	source := stringField(payload, "source")
+	if nodeID == "" || evidenceRef == "" || operatorGroupID == "" || observedAt == "" || source == "" {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "missing required field")
+		return
+	}
+	if _, ok := s.store.GetNode(nodeID); !ok {
+		writeError(w, http.StatusNotFound, "unknown_node_id", "unknown node")
+		return
+	}
+	if err := s.validateTimestamp(observedAt); err != nil {
+		writeError(w, http.StatusBadRequest, "stale_timestamp", err.Error())
+		return
+	}
+	if !s.store.SaveOperatorGroupEvidence(store.OperatorGroupEvidence{
+		EvidenceRef:     evidenceRef,
+		NodeID:          nodeID,
+		OperatorGroupID: operatorGroupID,
+		ObservedAt:      observedAt,
+		Source:          source,
+	}) {
+		writeError(w, http.StatusConflict, "duplicate_evidence_ref", "duplicate evidence_ref")
+		return
+	}
+	if dateUTC, err := datePart(observedAt); err == nil {
+		s.rebuildRewardEligibility(dateUTC, s.store.ListRankingRecordsByDate(dateUTC))
+	}
+	if err := s.persist(); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_persist_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":       "accepted",
+		"evidence_ref": evidenceRef,
+		"node_id":      nodeID,
+		"received_at":  time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+func (s *Server) handleRankingRead(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusBadRequest, "invalid_method", "invalid method")
+		return
+	}
+	dateUTC := strings.TrimPrefix(r.URL.Path, "/api/v1/rankings/")
+	dateUTC = strings.TrimSpace(dateUTC)
+	if _, err := time.Parse("2006-01-02", dateUTC); err != nil {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "invalid date_utc")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"date_utc": dateUTC,
+		"items":    s.store.ListRankingRecordsByDate(dateUTC),
+	})
+}
+
+func (s *Server) handleRewardEligibilityRead(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusBadRequest, "invalid_method", "invalid method")
+		return
+	}
+	dateUTC := strings.TrimPrefix(r.URL.Path, "/api/v1/reward-eligibility/")
+	dateUTC = strings.TrimSpace(dateUTC)
+	if _, err := time.Parse("2006-01-02", dateUTC); err != nil {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "invalid date_utc")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"date_utc": dateUTC,
+		"items":    s.store.ListRewardEligibilityRecordsByDate(dateUTC),
+	})
+}
+
+func (s *Server) handlePublicNodeStatusRead(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusBadRequest, "invalid_method", "invalid method")
+		return
+	}
+	dateUTC := strings.TrimPrefix(r.URL.Path, "/api/v1/public-node-status/")
+	dateUTC = strings.TrimSpace(dateUTC)
+	if _, err := time.Parse("2006-01-02", dateUTC); err != nil {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "invalid date_utc")
+		return
+	}
+	items := make([]publicNodeStatusView, 0)
+	rankingByNode := rankingIndex(s.store.ListRankingRecordsByDate(dateUTC))
+	rewardByNode := rewardEligibilityIndex(s.store.ListRewardEligibilityRecordsByDate(dateUTC))
+	for _, node := range s.store.ListNodes() {
+		decision, ok := s.store.GetQualifiedDecisionRecord(node.NodeID, dateUTC)
+		if !ok {
+			continue
+		}
+		items = append(items, buildPublicNodeStatusView(node.NodeID, dateUTC, decision, rankingByNode[node.NodeID], rewardByNode[node.NodeID]))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"date_utc": dateUTC,
+		"items":    items,
+	})
+}
+
+func (s *Server) handleOperatorNodeStatusRead(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusBadRequest, "invalid_method", "invalid method")
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/operator-node-status/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "missing node_id or date_utc")
+		return
+	}
+	nodeID := strings.TrimSpace(parts[0])
+	dateUTC := strings.TrimSpace(parts[1])
+	if _, err := time.Parse("2006-01-02", dateUTC); err != nil {
+		writeError(w, http.StatusBadRequest, "missing_required_field", "invalid date_utc")
+		return
+	}
+	if _, ok := s.store.GetNode(nodeID); !ok {
+		writeError(w, http.StatusNotFound, "unknown_node_id", "unknown node")
+		return
+	}
+	decision, ok := s.store.GetQualifiedDecisionRecord(nodeID, dateUTC)
+	if !ok {
+		writeError(w, http.StatusNotFound, "missing_qualified_decision", "qualified decision not found")
+		return
+	}
+	rankingByNode := rankingIndex(s.store.ListRankingRecordsByDate(dateUTC))
+	rewardByNode := rewardEligibilityIndex(s.store.ListRewardEligibilityRecordsByDate(dateUTC))
+	writeJSON(w, http.StatusOK, buildOperatorNodeStatusView(nodeID, dateUTC, decision, rankingByNode[nodeID], rewardByNode[nodeID]))
 }
 
 func (s *Server) authorizeMapPayload(node store.Node, payload map[string]any) error {
@@ -810,7 +993,14 @@ func datePart(timestamp string) (string, error) {
 func (s *Server) updateQualificationArtifacts(nodeID, dateUTC string) {
 	summary := s.computeDailyQualificationSummary(nodeID, dateUTC)
 	s.store.SaveDailyQualificationSummary(summary)
-	s.store.SaveQualifiedDecisionRecord(s.computeQualifiedDecisionRecord(nodeID, summary))
+	decision := s.computeQualifiedDecisionRecord(nodeID, summary)
+	s.store.SaveQualifiedDecisionRecord(decision)
+	if record, ok := s.computeBasePerformanceRecord(summary, decision); ok {
+		s.store.SaveBasePerformanceRecord(record)
+	} else {
+		s.store.DeleteBasePerformanceRecord(nodeID, dateUTC)
+	}
+	s.rebuildRankings(dateUTC)
 }
 
 func (s *Server) computeQualifiedDecisionRecord(nodeID string, summary store.DailyQualificationSummary) store.QualifiedDecisionRecord {
@@ -827,25 +1017,23 @@ func (s *Server) computeQualifiedDecisionRecord(nodeID string, summary store.Dai
 	}
 
 	heartbeatPassed := false
-	if strings.TrimSpace(node.LastHeartbeatTimestamp) == "" {
+	if _, ok := s.store.LatestHeartbeatEventForNodeAndDate(nodeID, summary.DateUTC); ok {
+		heartbeatPassed = true
+	} else if strings.TrimSpace(node.LastHeartbeatTimestamp) == "" {
 		failureReasons = append(failureReasons, "heartbeat_missing")
 	} else {
 		lastSeen, err := time.Parse(time.RFC3339, node.LastHeartbeatTimestamp)
 		if err != nil || lastSeen.UTC().Format("2006-01-02") != summary.DateUTC {
 			failureReasons = append(failureReasons, "heartbeat_missing")
-		} else if time.Since(lastSeen.UTC()) >= s.cfg.HeartbeatStaleAfter {
-			failureReasons = append(failureReasons, "heartbeat_stale")
 		} else {
 			heartbeatPassed = true
 		}
 	}
 
 	hardwarePassed := false
-	if latestCheck, ok := s.store.LatestCheckEventForNode(nodeID); !ok {
+	if latestCheck, ok := s.store.LatestCheckEventForNodeAndDate(nodeID, summary.DateUTC); !ok {
 		failureReasons = append(failureReasons, "hardware_check_missing")
 	} else if strings.TrimSpace(latestCheck.CheckedAt) == "" {
-		failureReasons = append(failureReasons, "hardware_check_missing")
-	} else if checkedDateUTC, err := datePart(latestCheck.CheckedAt); err != nil || checkedDateUTC != summary.DateUTC {
 		failureReasons = append(failureReasons, "hardware_check_missing")
 	} else if !latestCheck.OverallPassed {
 		failureReasons = append(failureReasons, "hardware_check_failed")
@@ -854,9 +1042,7 @@ func (s *Server) computeQualifiedDecisionRecord(nodeID string, summary store.Dai
 	}
 
 	votingKeyPassed := false
-	if latestEvidence, ok := s.store.GetLatestVotingKeyEvidenceForNode(nodeID); !ok {
-		failureReasons = append(failureReasons, "voting_key_evidence_missing")
-	} else if observedDateUTC, err := datePart(latestEvidence.ObservedAt); err != nil || observedDateUTC != summary.DateUTC {
+	if latestEvidence, ok := s.store.GetLatestVotingKeyEvidenceForNodeAndDate(nodeID, summary.DateUTC); !ok {
 		failureReasons = append(failureReasons, "voting_key_evidence_missing")
 	} else if !latestEvidence.VotingKeyPresent {
 		failureReasons = append(failureReasons, "voting_key_not_present")
@@ -879,6 +1065,229 @@ func (s *Server) computeQualifiedDecisionRecord(nodeID string, summary store.Dai
 		InsufficientEvidenceReason: summary.InsufficientEvidenceReason,
 		DecidedAt:                  time.Now().UTC().Format(time.RFC3339),
 	}
+}
+
+func (s *Server) computeBasePerformanceRecord(summary store.DailyQualificationSummary, decision store.QualifiedDecisionRecord) (store.BasePerformanceRecord, bool) {
+	if !decision.Qualified {
+		return store.BasePerformanceRecord{}, false
+	}
+	availabilityScore := clampScore(30 * summary.AvailabilityRatio)
+	finalizationScore := clampScore(20 * summary.FinalizedLagRatio)
+	chainSyncScore := clampScore(10 * summary.ChainLagRatio)
+	votingKeyScore := 0.0
+	if decision.VotingKeyPassed {
+		votingKeyScore = 10
+	}
+	basePerformanceScore := availabilityScore + finalizationScore + chainSyncScore + votingKeyScore
+	return store.BasePerformanceRecord{
+		NodeID:               summary.NodeID,
+		DateUTC:              summary.DateUTC,
+		PolicyVersion:        summary.PolicyVersion,
+		AvailabilityScore:    availabilityScore,
+		FinalizationScore:    finalizationScore,
+		ChainSyncScore:       chainSyncScore,
+		VotingKeyScore:       votingKeyScore,
+		BasePerformanceScore: basePerformanceScore,
+		QualifiedDecisionRef: summary.NodeID + ":" + summary.DateUTC,
+		DailySummaryRef:      summary.NodeID + ":" + summary.DateUTC,
+		ComputedAt:           time.Now().UTC().Format(time.RFC3339),
+	}, true
+}
+
+func (s *Server) rebuildRankings(dateUTC string) {
+	records := s.store.ListBasePerformanceRecordsByDate(dateUTC)
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].BasePerformanceScore == records[j].BasePerformanceScore {
+			if records[i].FinalizationScore == records[j].FinalizationScore {
+				if records[i].AvailabilityScore == records[j].AvailabilityScore {
+					iNode, _ := s.store.GetNode(records[i].NodeID)
+					jNode, _ := s.store.GetNode(records[j].NodeID)
+					if registrationTimeLess(iNode.ValidatedRegistrationAt, jNode.ValidatedRegistrationAt) {
+						return true
+					}
+					if registrationTimeLess(jNode.ValidatedRegistrationAt, iNode.ValidatedRegistrationAt) {
+						return false
+					}
+					return records[i].NodeID < records[j].NodeID
+				}
+				return records[i].AvailabilityScore > records[j].AvailabilityScore
+			}
+			return records[i].FinalizationScore > records[j].FinalizationScore
+		}
+		return records[i].BasePerformanceScore > records[j].BasePerformanceScore
+	})
+	rankings := make([]store.RankingRecord, 0, len(records))
+	computedAt := time.Now().UTC().Format(time.RFC3339)
+	for i, record := range records {
+		rankings = append(rankings, store.RankingRecord{
+			NodeID:                record.NodeID,
+			DateUTC:               record.DateUTC,
+			PolicyVersion:         record.PolicyVersion,
+			RankPosition:          i + 1,
+			AvailabilityScore:     record.AvailabilityScore,
+			FinalizationScore:     record.FinalizationScore,
+			ChainSyncScore:        record.ChainSyncScore,
+			VotingKeyScore:        record.VotingKeyScore,
+			BasePerformanceScore:  record.BasePerformanceScore,
+			DecentralizationScore: 0,
+			TotalScore:            record.BasePerformanceScore,
+			OperatorGroupID:       record.NodeID,
+			RewardEligible:        true,
+			ComputedAt:            computedAt,
+		})
+	}
+	s.store.ReplaceRankingRecordsForDate(dateUTC, rankings)
+	s.rebuildRewardEligibility(dateUTC, rankings)
+}
+
+func registrationTimeLess(left, right string) bool {
+	leftTime, leftOK := parseRFC3339(left)
+	rightTime, rightOK := parseRFC3339(right)
+	switch {
+	case leftOK && rightOK:
+		return leftTime.Before(rightTime)
+	case leftOK:
+		return true
+	case rightOK:
+		return false
+	default:
+		return false
+	}
+}
+
+func parseRFC3339(raw string) (time.Time, bool) {
+	if strings.TrimSpace(raw) == "" {
+		return time.Time{}, false
+	}
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed.UTC(), true
+}
+
+func (s *Server) rebuildRewardEligibility(dateUTC string, rankings []store.RankingRecord) {
+	records := make([]store.RewardEligibilityRecord, 0, len(rankings))
+	decidedAt := time.Now().UTC().Format(time.RFC3339)
+	seenGroups := map[string]struct{}{}
+	for _, ranking := range rankings {
+		operatorGroupID := ranking.NodeID
+		if evidence, ok := s.store.GetLatestOperatorGroupEvidenceForNodeAndDate(ranking.NodeID, dateUTC); ok {
+			if strings.TrimSpace(evidence.OperatorGroupID) != "" {
+				operatorGroupID = evidence.OperatorGroupID
+			}
+		}
+		rewardEligible := true
+		exclusionReason := ""
+		if _, exists := seenGroups[operatorGroupID]; exists {
+			rewardEligible = false
+			exclusionReason = "same_operator_group_lower_ranked"
+		} else {
+			seenGroups[operatorGroupID] = struct{}{}
+		}
+		records = append(records, store.RewardEligibilityRecord{
+			NodeID:          ranking.NodeID,
+			DateUTC:         dateUTC,
+			PolicyVersion:   ranking.PolicyVersion,
+			RankPosition:    ranking.RankPosition,
+			Qualified:       true,
+			OperatorGroupID: operatorGroupID,
+			RewardEligible:  rewardEligible,
+			ExclusionReason: exclusionReason,
+			DecidedAt:       decidedAt,
+		})
+	}
+	s.store.ReplaceRewardEligibilityRecordsForDate(dateUTC, records)
+}
+
+func clampScore(value float64) float64 {
+	switch {
+	case value < 0:
+		return 0
+	case value > 100:
+		return 100
+	default:
+		return value
+	}
+}
+
+func rankingIndex(records []store.RankingRecord) map[string]store.RankingRecord {
+	out := make(map[string]store.RankingRecord, len(records))
+	for _, record := range records {
+		out[record.NodeID] = record
+	}
+	return out
+}
+
+func rewardEligibilityIndex(records []store.RewardEligibilityRecord) map[string]store.RewardEligibilityRecord {
+	out := make(map[string]store.RewardEligibilityRecord, len(records))
+	for _, record := range records {
+		out[record.NodeID] = record
+	}
+	return out
+}
+
+func buildPublicNodeStatusView(nodeID, dateUTC string, decision store.QualifiedDecisionRecord, ranking store.RankingRecord, reward store.RewardEligibilityRecord) publicNodeStatusView {
+	view := publicNodeStatusView{
+		NodeID:         nodeID,
+		DateUTC:        dateUTC,
+		Qualified:      decision.Qualified,
+		RewardEligible: reward.RewardEligible,
+		StatusReason:   summarizeStatusReason(decision, reward),
+	}
+	if ranking.NodeID != "" {
+		view.RankPosition = intPtr(ranking.RankPosition)
+	}
+	return view
+}
+
+func buildOperatorNodeStatusView(nodeID, dateUTC string, decision store.QualifiedDecisionRecord, ranking store.RankingRecord, reward store.RewardEligibilityRecord) operatorNodeStatusView {
+	view := operatorNodeStatusView{
+		NodeID:          nodeID,
+		DateUTC:         dateUTC,
+		Qualified:       decision.Qualified,
+		RewardEligible:  reward.RewardEligible,
+		StatusReason:    summarizeStatusReason(decision, reward),
+		FailureReasons:  append([]string(nil), decision.FailureReasons...),
+		HeartbeatPassed: decision.HeartbeatPassed,
+		HardwarePassed:  decision.HardwarePassed,
+		VotingKeyPassed: decision.VotingKeyPassed,
+	}
+	if ranking.NodeID != "" {
+		view.RankPosition = intPtr(ranking.RankPosition)
+	}
+	if reward.NodeID != "" {
+		view.OperatorGroupID = reward.OperatorGroupID
+		view.ExclusionReason = reward.ExclusionReason
+		view.RewardEligible = reward.RewardEligible
+	}
+	return view
+}
+
+func summarizeStatusReason(decision store.QualifiedDecisionRecord, reward store.RewardEligibilityRecord) string {
+	if reward.ExclusionReason != "" {
+		return reward.ExclusionReason
+	}
+	if !decision.Qualified {
+		if decision.InsufficientEvidenceReason != "" {
+			return decision.InsufficientEvidenceReason
+		}
+		if len(decision.FailureReasons) > 0 {
+			return decision.FailureReasons[0]
+		}
+		return "not_qualified"
+	}
+	if reward.NodeID == "" {
+		return "qualified"
+	}
+	if reward.RewardEligible {
+		return "reward_eligible"
+	}
+	return "qualified"
+}
+
+func intPtr(v int) *int {
+	return &v
 }
 
 func classifyAuthError(err error) (int, string) {

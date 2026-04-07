@@ -20,6 +20,7 @@ type Node struct {
 	ActiveAgentKeyFingerprint string `json:"active_agent_key_fingerprint,omitempty"`
 	AgentPublicKey            string `json:"agent_public_key,omitempty"`
 	EnrollmentGeneration      int    `json:"enrollment_generation,omitempty"`
+	ValidatedRegistrationAt   string `json:"validated_registration_at,omitempty"`
 	LastHeartbeatSequence     int    `json:"last_heartbeat_sequence,omitempty"`
 	LastHeartbeatTimestamp    string `json:"last_heartbeat_timestamp,omitempty"`
 	LastPolicyVersion         string `json:"last_policy_version,omitempty"`
@@ -30,6 +31,12 @@ type CheckEvent struct {
 	NodeID        string `json:"node_id"`
 	OverallPassed bool   `json:"overall_passed"`
 	CheckedAt     string `json:"checked_at"`
+}
+
+type HeartbeatEvent struct {
+	NodeID             string `json:"node_id"`
+	HeartbeatTimestamp string `json:"heartbeat_timestamp"`
+	SequenceNumber     int    `json:"sequence_number"`
 }
 
 type TelemetryEvent struct {
@@ -95,6 +102,58 @@ type QualifiedDecisionRecord struct {
 	DecidedAt                  string   `json:"decided_at"`
 }
 
+type BasePerformanceRecord struct {
+	NodeID               string  `json:"node_id"`
+	DateUTC              string  `json:"date_utc"`
+	PolicyVersion        string  `json:"policy_version"`
+	AvailabilityScore    float64 `json:"availability_score"`
+	FinalizationScore    float64 `json:"finalization_score"`
+	ChainSyncScore       float64 `json:"chain_sync_score"`
+	VotingKeyScore       float64 `json:"voting_key_score"`
+	BasePerformanceScore float64 `json:"base_performance_score"`
+	QualifiedDecisionRef string  `json:"qualified_decision_ref"`
+	DailySummaryRef      string  `json:"daily_summary_ref"`
+	ComputedAt           string  `json:"computed_at"`
+}
+
+type RankingRecord struct {
+	NodeID                string  `json:"node_id"`
+	DateUTC               string  `json:"date_utc"`
+	PolicyVersion         string  `json:"policy_version"`
+	RankPosition          int     `json:"rank_position"`
+	AvailabilityScore     float64 `json:"availability_score"`
+	FinalizationScore     float64 `json:"finalization_score"`
+	ChainSyncScore        float64 `json:"chain_sync_score"`
+	VotingKeyScore        float64 `json:"voting_key_score"`
+	BasePerformanceScore  float64 `json:"base_performance_score"`
+	DecentralizationScore float64 `json:"decentralization_score"`
+	TotalScore            float64 `json:"total_score"`
+	OperatorGroupID       string  `json:"operator_group_id"`
+	RewardEligible        bool    `json:"reward_eligible"`
+	ExclusionReason       string  `json:"exclusion_reason,omitempty"`
+	ComputedAt            string  `json:"computed_at"`
+}
+
+type RewardEligibilityRecord struct {
+	NodeID          string `json:"node_id"`
+	DateUTC         string `json:"date_utc"`
+	PolicyVersion   string `json:"policy_version"`
+	RankPosition    int    `json:"rank_position"`
+	Qualified       bool   `json:"qualified"`
+	OperatorGroupID string `json:"operator_group_id"`
+	RewardEligible  bool   `json:"reward_eligible"`
+	ExclusionReason string `json:"exclusion_reason,omitempty"`
+	DecidedAt       string `json:"decided_at"`
+}
+
+type OperatorGroupEvidence struct {
+	EvidenceRef     string `json:"evidence_ref"`
+	NodeID          string `json:"node_id"`
+	OperatorGroupID string `json:"operator_group_id"`
+	ObservedAt      string `json:"observed_at"`
+	Source          string `json:"source"`
+}
+
 type VotingKeyEvidence struct {
 	EvidenceRef            string `json:"evidence_ref"`
 	NodeID                 string `json:"node_id"`
@@ -147,10 +206,15 @@ type NodesConfig struct {
 type snapshot struct {
 	Nodes                  []Node                      `json:"nodes"`
 	CheckEvents            []CheckEvent                `json:"check_events"`
+	HeartbeatEvents        []HeartbeatEvent            `json:"heartbeat_events"`
 	TelemetryEvents        []TelemetryEvent            `json:"telemetry_events"`
 	ProbeEvents            []ProbeEvent                `json:"probe_events"`
 	DailySummaries         []DailyQualificationSummary `json:"daily_summaries"`
 	QualifiedDecisions     []QualifiedDecisionRecord   `json:"qualified_decisions"`
+	BasePerformanceRecords []BasePerformanceRecord     `json:"base_performance_records"`
+	RankingRecords         []RankingRecord             `json:"ranking_records"`
+	RewardEligibility      []RewardEligibilityRecord   `json:"reward_eligibility"`
+	OperatorGroupEvidence  []OperatorGroupEvidence     `json:"operator_group_evidence"`
 	VotingKeyEvidence      []VotingKeyEvidence         `json:"voting_key_evidence"`
 	LatestTelemetry        []LatestTelemetry           `json:"latest_telemetry"`
 	AlertStates            []AlertState                `json:"alert_states"`
@@ -162,10 +226,15 @@ type Store struct {
 	mu                 sync.RWMutex
 	nodes              map[string]Node
 	checkEvents        map[string]CheckEvent
+	heartbeatEvents    []HeartbeatEvent
 	telemetryEvents    []TelemetryEvent
 	probeEvents        map[string]ProbeEvent
 	dailySummaries     map[string]DailyQualificationSummary
 	qualifiedDecisions map[string]QualifiedDecisionRecord
+	basePerformance    map[string]BasePerformanceRecord
+	rankingRecords     map[string]RankingRecord
+	rewardEligibility  map[string]RewardEligibilityRecord
+	operatorGroups     map[string]OperatorGroupEvidence
 	votingKeyEvidence  map[string]VotingKeyEvidence
 	latestTelemetry    map[string]LatestTelemetry
 	alertStates        map[string]AlertState
@@ -184,9 +253,14 @@ func New(seedNodes []Node) *Store {
 	return &Store{
 		nodes:              nodes,
 		checkEvents:        map[string]CheckEvent{},
+		heartbeatEvents:    nil,
 		probeEvents:        map[string]ProbeEvent{},
 		dailySummaries:     map[string]DailyQualificationSummary{},
 		qualifiedDecisions: map[string]QualifiedDecisionRecord{},
+		basePerformance:    map[string]BasePerformanceRecord{},
+		rankingRecords:     map[string]RankingRecord{},
+		rewardEligibility:  map[string]RewardEligibilityRecord{},
+		operatorGroups:     map[string]OperatorGroupEvidence{},
 		votingKeyEvidence:  map[string]VotingKeyEvidence{},
 		latestTelemetry:    map[string]LatestTelemetry{},
 		alertStates:        map[string]AlertState{},
@@ -221,6 +295,7 @@ func LoadNodesConfig(path string) ([]Node, error) {
 		node.ActiveAgentKeyFingerprint = ""
 		node.AgentPublicKey = ""
 		node.EnrollmentGeneration = 0
+		node.ValidatedRegistrationAt = ""
 		node.LastHeartbeatSequence = 0
 		node.LastHeartbeatTimestamp = ""
 		node.LastPolicyVersion = ""
@@ -312,6 +387,7 @@ func (s *Store) applySnapshot(snap snapshot) error {
 		seedNode.ActiveAgentKeyFingerprint = node.ActiveAgentKeyFingerprint
 		seedNode.AgentPublicKey = node.AgentPublicKey
 		seedNode.EnrollmentGeneration = node.EnrollmentGeneration
+		seedNode.ValidatedRegistrationAt = node.ValidatedRegistrationAt
 		seedNode.LastHeartbeatSequence = node.LastHeartbeatSequence
 		seedNode.LastHeartbeatTimestamp = node.LastHeartbeatTimestamp
 		seedNode.LastPolicyVersion = node.LastPolicyVersion
@@ -325,6 +401,14 @@ func (s *Store) applySnapshot(snap snapshot) error {
 			return errors.New("snapshot check event contains unknown node_id")
 		}
 		s.checkEvents[event.EventID] = event
+	}
+
+	s.heartbeatEvents = nil
+	for _, event := range snap.HeartbeatEvents {
+		if _, ok := seedNodes[event.NodeID]; !ok {
+			return errors.New("snapshot heartbeat event contains unknown node_id")
+		}
+		s.heartbeatEvents = append(s.heartbeatEvents, event)
 	}
 
 	s.telemetryEvents = nil
@@ -357,6 +441,38 @@ func (s *Store) applySnapshot(snap snapshot) error {
 			return errors.New("snapshot qualified decision contains unknown node_id")
 		}
 		s.qualifiedDecisions[qualifiedDecisionKey(decision.NodeID, decision.DateUTC)] = decision
+	}
+
+	s.basePerformance = map[string]BasePerformanceRecord{}
+	for _, record := range snap.BasePerformanceRecords {
+		if _, ok := seedNodes[record.NodeID]; !ok {
+			return errors.New("snapshot base performance record contains unknown node_id")
+		}
+		s.basePerformance[basePerformanceKey(record.NodeID, record.DateUTC)] = record
+	}
+
+	s.rankingRecords = map[string]RankingRecord{}
+	for _, record := range snap.RankingRecords {
+		if _, ok := seedNodes[record.NodeID]; !ok {
+			return errors.New("snapshot ranking record contains unknown node_id")
+		}
+		s.rankingRecords[rankingRecordKey(record.NodeID, record.DateUTC)] = record
+	}
+
+	s.rewardEligibility = map[string]RewardEligibilityRecord{}
+	for _, record := range snap.RewardEligibility {
+		if _, ok := seedNodes[record.NodeID]; !ok {
+			return errors.New("snapshot reward eligibility contains unknown node_id")
+		}
+		s.rewardEligibility[rewardEligibilityKey(record.NodeID, record.DateUTC)] = record
+	}
+
+	s.operatorGroups = map[string]OperatorGroupEvidence{}
+	for _, evidence := range snap.OperatorGroupEvidence {
+		if _, ok := seedNodes[evidence.NodeID]; !ok {
+			return errors.New("snapshot operator group evidence contains unknown node_id")
+		}
+		s.operatorGroups[evidence.EvidenceRef] = evidence
 	}
 
 	s.votingKeyEvidence = map[string]VotingKeyEvidence{}
@@ -421,6 +537,17 @@ func (s *Store) snapshot() snapshot {
 		return checks[i].EventID < checks[j].EventID
 	})
 
+	heartbeats := append([]HeartbeatEvent(nil), s.heartbeatEvents...)
+	sort.Slice(heartbeats, func(i, j int) bool {
+		if heartbeats[i].HeartbeatTimestamp == heartbeats[j].HeartbeatTimestamp {
+			if heartbeats[i].NodeID == heartbeats[j].NodeID {
+				return heartbeats[i].SequenceNumber < heartbeats[j].SequenceNumber
+			}
+			return heartbeats[i].NodeID < heartbeats[j].NodeID
+		}
+		return heartbeats[i].HeartbeatTimestamp < heartbeats[j].HeartbeatTimestamp
+	})
+
 	probes := make([]ProbeEvent, 0, len(s.probeEvents))
 	for _, event := range s.probeEvents {
 		probes = append(probes, event)
@@ -449,6 +576,53 @@ func (s *Store) snapshot() snapshot {
 			return qualifiedDecisions[i].NodeID < qualifiedDecisions[j].NodeID
 		}
 		return qualifiedDecisions[i].DateUTC < qualifiedDecisions[j].DateUTC
+	})
+
+	basePerformance := make([]BasePerformanceRecord, 0, len(s.basePerformance))
+	for _, record := range s.basePerformance {
+		basePerformance = append(basePerformance, record)
+	}
+	sort.Slice(basePerformance, func(i, j int) bool {
+		if basePerformance[i].DateUTC == basePerformance[j].DateUTC {
+			return basePerformance[i].NodeID < basePerformance[j].NodeID
+		}
+		return basePerformance[i].DateUTC < basePerformance[j].DateUTC
+	})
+
+	rankingRecords := make([]RankingRecord, 0, len(s.rankingRecords))
+	for _, record := range s.rankingRecords {
+		rankingRecords = append(rankingRecords, record)
+	}
+	sort.Slice(rankingRecords, func(i, j int) bool {
+		if rankingRecords[i].DateUTC == rankingRecords[j].DateUTC {
+			if rankingRecords[i].RankPosition == rankingRecords[j].RankPosition {
+				return rankingRecords[i].NodeID < rankingRecords[j].NodeID
+			}
+			return rankingRecords[i].RankPosition < rankingRecords[j].RankPosition
+		}
+		return rankingRecords[i].DateUTC < rankingRecords[j].DateUTC
+	})
+
+	rewardEligibility := make([]RewardEligibilityRecord, 0, len(s.rewardEligibility))
+	for _, record := range s.rewardEligibility {
+		rewardEligibility = append(rewardEligibility, record)
+	}
+	sort.Slice(rewardEligibility, func(i, j int) bool {
+		if rewardEligibility[i].DateUTC == rewardEligibility[j].DateUTC {
+			if rewardEligibility[i].RankPosition == rewardEligibility[j].RankPosition {
+				return rewardEligibility[i].NodeID < rewardEligibility[j].NodeID
+			}
+			return rewardEligibility[i].RankPosition < rewardEligibility[j].RankPosition
+		}
+		return rewardEligibility[i].DateUTC < rewardEligibility[j].DateUTC
+	})
+
+	operatorGroupEvidence := make([]OperatorGroupEvidence, 0, len(s.operatorGroups))
+	for _, evidence := range s.operatorGroups {
+		operatorGroupEvidence = append(operatorGroupEvidence, evidence)
+	}
+	sort.Slice(operatorGroupEvidence, func(i, j int) bool {
+		return operatorGroupEvidence[i].EvidenceRef < operatorGroupEvidence[j].EvidenceRef
 	})
 
 	votingKeyEvidence := make([]VotingKeyEvidence, 0, len(s.votingKeyEvidence))
@@ -491,10 +665,15 @@ func (s *Store) snapshot() snapshot {
 	return snapshot{
 		Nodes:                  nodes,
 		CheckEvents:            checks,
+		HeartbeatEvents:        heartbeats,
 		TelemetryEvents:        telemetry,
 		ProbeEvents:            probes,
 		DailySummaries:         dailySummaries,
 		QualifiedDecisions:     qualifiedDecisions,
+		BasePerformanceRecords: basePerformance,
+		RankingRecords:         rankingRecords,
+		RewardEligibility:      rewardEligibility,
+		OperatorGroupEvidence:  operatorGroupEvidence,
 		VotingKeyEvidence:      votingKeyEvidence,
 		LatestTelemetry:        latest,
 		AlertStates:            alerts,
@@ -544,6 +723,12 @@ func (s *Store) GetCheckEvent(eventID string) (CheckEvent, bool) {
 	defer s.mu.RUnlock()
 	event, ok := s.checkEvents[eventID]
 	return event, ok
+}
+
+func (s *Store) SaveHeartbeatEvent(event HeartbeatEvent) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.heartbeatEvents = append(s.heartbeatEvents, event)
 }
 
 func (s *Store) SaveProbeEvent(event ProbeEvent) bool {
@@ -611,11 +796,169 @@ func (s *Store) GetQualifiedDecisionRecord(nodeID, dateUTC string) (QualifiedDec
 	return decision, ok
 }
 
+func (s *Store) SaveBasePerformanceRecord(record BasePerformanceRecord) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.basePerformance[basePerformanceKey(record.NodeID, record.DateUTC)] = record
+}
+
+func (s *Store) DeleteBasePerformanceRecord(nodeID, dateUTC string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.basePerformance, basePerformanceKey(nodeID, dateUTC))
+}
+
+func (s *Store) GetBasePerformanceRecord(nodeID, dateUTC string) (BasePerformanceRecord, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	record, ok := s.basePerformance[basePerformanceKey(nodeID, dateUTC)]
+	return record, ok
+}
+
+func (s *Store) ListBasePerformanceRecordsByDate(dateUTC string) []BasePerformanceRecord {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []BasePerformanceRecord
+	for _, record := range s.basePerformance {
+		if dateUTC != "" && record.DateUTC != dateUTC {
+			continue
+		}
+		out = append(out, record)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].NodeID < out[j].NodeID
+	})
+	return out
+}
+
+func (s *Store) ReplaceRankingRecordsForDate(dateUTC string, records []RankingRecord) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, record := range s.rankingRecords {
+		if record.DateUTC == dateUTC {
+			delete(s.rankingRecords, key)
+		}
+	}
+	for _, record := range records {
+		s.rankingRecords[rankingRecordKey(record.NodeID, record.DateUTC)] = record
+	}
+}
+
+func (s *Store) ListRankingRecordsByDate(dateUTC string) []RankingRecord {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []RankingRecord
+	for _, record := range s.rankingRecords {
+		if dateUTC != "" && record.DateUTC != dateUTC {
+			continue
+		}
+		out = append(out, record)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].RankPosition == out[j].RankPosition {
+			return out[i].NodeID < out[j].NodeID
+		}
+		return out[i].RankPosition < out[j].RankPosition
+	})
+	return out
+}
+
+func (s *Store) ReplaceRewardEligibilityRecordsForDate(dateUTC string, records []RewardEligibilityRecord) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, record := range s.rewardEligibility {
+		if record.DateUTC == dateUTC {
+			delete(s.rewardEligibility, key)
+		}
+	}
+	for _, record := range records {
+		s.rewardEligibility[rewardEligibilityKey(record.NodeID, record.DateUTC)] = record
+	}
+}
+
+func (s *Store) ListRewardEligibilityRecordsByDate(dateUTC string) []RewardEligibilityRecord {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []RewardEligibilityRecord
+	for _, record := range s.rewardEligibility {
+		if dateUTC != "" && record.DateUTC != dateUTC {
+			continue
+		}
+		out = append(out, record)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].RankPosition == out[j].RankPosition {
+			return out[i].NodeID < out[j].NodeID
+		}
+		return out[i].RankPosition < out[j].RankPosition
+	})
+	return out
+}
+
+func (s *Store) SaveOperatorGroupEvidence(evidence OperatorGroupEvidence) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.operatorGroups[evidence.EvidenceRef]; exists {
+		return false
+	}
+	s.operatorGroups[evidence.EvidenceRef] = evidence
+	return true
+}
+
+func (s *Store) GetLatestOperatorGroupEvidenceForNode(nodeID string) (OperatorGroupEvidence, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var latest OperatorGroupEvidence
+	found := false
+	for _, evidence := range s.operatorGroups {
+		if evidence.NodeID != nodeID {
+			continue
+		}
+		if !found || evidence.ObservedAt > latest.ObservedAt {
+			latest = evidence
+			found = true
+		}
+	}
+	return latest, found
+}
+
+func (s *Store) GetLatestOperatorGroupEvidenceForNodeAndDate(nodeID, dateUTC string) (OperatorGroupEvidence, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var latest OperatorGroupEvidence
+	found := false
+	for _, evidence := range s.operatorGroups {
+		if evidence.NodeID != nodeID {
+			continue
+		}
+		if dateUTC != "" && !strings.HasPrefix(evidence.ObservedAt, dateUTC) {
+			continue
+		}
+		if !found || evidence.ObservedAt > latest.ObservedAt {
+			latest = evidence
+			found = true
+		}
+	}
+	return latest, found
+}
+
 func dailySummaryKey(nodeID, dateUTC string) string {
 	return nodeID + "\x00" + dateUTC
 }
 
 func qualifiedDecisionKey(nodeID, dateUTC string) string {
+	return nodeID + "\x00" + dateUTC
+}
+
+func basePerformanceKey(nodeID, dateUTC string) string {
+	return nodeID + "\x00" + dateUTC
+}
+
+func rankingRecordKey(nodeID, dateUTC string) string {
+	return nodeID + "\x00" + dateUTC
+}
+
+func rewardEligibilityKey(nodeID, dateUTC string) string {
 	return nodeID + "\x00" + dateUTC
 }
 
@@ -629,6 +972,46 @@ func (s *Store) LatestCheckEventForNode(nodeID string) (CheckEvent, bool) {
 			continue
 		}
 		if !found || event.CheckedAt > latest.CheckedAt {
+			latest = event
+			found = true
+		}
+	}
+	return latest, found
+}
+
+func (s *Store) LatestCheckEventForNodeAndDate(nodeID, dateUTC string) (CheckEvent, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var latest CheckEvent
+	found := false
+	for _, event := range s.checkEvents {
+		if event.NodeID != nodeID {
+			continue
+		}
+		if dateUTC != "" && !strings.HasPrefix(event.CheckedAt, dateUTC) {
+			continue
+		}
+		if !found || event.CheckedAt > latest.CheckedAt {
+			latest = event
+			found = true
+		}
+	}
+	return latest, found
+}
+
+func (s *Store) LatestHeartbeatEventForNodeAndDate(nodeID, dateUTC string) (HeartbeatEvent, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var latest HeartbeatEvent
+	found := false
+	for _, event := range s.heartbeatEvents {
+		if event.NodeID != nodeID {
+			continue
+		}
+		if dateUTC != "" && !strings.HasPrefix(event.HeartbeatTimestamp, dateUTC) {
+			continue
+		}
+		if !found || event.HeartbeatTimestamp > latest.HeartbeatTimestamp {
 			latest = event
 			found = true
 		}
@@ -653,6 +1036,26 @@ func (s *Store) GetLatestVotingKeyEvidenceForNode(nodeID string) (VotingKeyEvide
 	found := false
 	for _, evidence := range s.votingKeyEvidence {
 		if evidence.NodeID != nodeID {
+			continue
+		}
+		if !found || evidence.ObservedAt > latest.ObservedAt {
+			latest = evidence
+			found = true
+		}
+	}
+	return latest, found
+}
+
+func (s *Store) GetLatestVotingKeyEvidenceForNodeAndDate(nodeID, dateUTC string) (VotingKeyEvidence, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var latest VotingKeyEvidence
+	found := false
+	for _, evidence := range s.votingKeyEvidence {
+		if evidence.NodeID != nodeID {
+			continue
+		}
+		if dateUTC != "" && !strings.HasPrefix(evidence.ObservedAt, dateUTC) {
 			continue
 		}
 		if !found || evidence.ObservedAt > latest.ObservedAt {

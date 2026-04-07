@@ -6,6 +6,10 @@ SSNP Program Agent と結合するための最小 Go portal stub です。
 
 - `GET /api/v1/agent/policy`
 - `GET /api/v1/agent/telemetry`
+- `GET /api/v1/rankings/{date_utc}`
+- `GET /api/v1/reward-eligibility/{date_utc}`
+- `GET /api/v1/public-node-status/{date_utc}`
+- `GET /api/v1/operator-node-status/{node_id}/{date_utc}`
 - `POST /api/v1/agent/enroll`
 - `POST /api/v1/agent/heartbeat`
 - `POST /api/v1/agent/checks`
@@ -22,6 +26,11 @@ SSNP Program Agent と結合するための最小 Go portal stub です。
 - enrollment challenge は空でない文字列かどうかだけ見ます
 - `policy_version`、profile ID、heartbeat sequence、signature は fail-closed で検証します
 - telemetry は履歴一覧と latest view を返し、runtime state に保存されます
+- read API contract は `../docs/openapi/portal_read_api.yaml` を正とします
+- `rankings` / `reward-eligibility` / `public-node-status` は未計算日の場合でも `200` + empty `items` を返します
+- `operator-node-status` は `unknown_node_id` と `missing_qualified_decision` を `404` で返します
+- `public-node-status` は公開最小 view であり、`failure_reasons` や `operator_group_id` を返しません
+- `operator-node-status` は node 単位の運営確認用 view であり、内部診断フィールドを返します
 - notification channel は `email` のみです
 - email delivery は SMTP + STARTTLS 前提です
 - SMTP password は `SSNP_SMTP_PASSWORD` 環境変数から読みます
@@ -97,4 +106,8 @@ go run ./cmd/program-agent --config ./config.example.yaml check --event-type reg
 ```sh
 curl "http://127.0.0.1:8080/api/v1/agent/telemetry?node_id=node-abc"
 curl "http://127.0.0.1:8080/api/v1/agent/telemetry?view=latest"
+curl "http://127.0.0.1:8080/api/v1/rankings/2026-04-07"
+curl "http://127.0.0.1:8080/api/v1/reward-eligibility/2026-04-07"
+curl "http://127.0.0.1:8080/api/v1/public-node-status/2026-04-07"
+curl "http://127.0.0.1:8080/api/v1/operator-node-status/node-abc/2026-04-07"
 ```
