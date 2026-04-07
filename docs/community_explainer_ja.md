@@ -23,10 +23,14 @@ SSNP は以下を導入します。
 
 - ノード登録
 - 独立監視
+- SSNP v0.1 参加条件としての Program Agent 必須
 - 性能ベースランキング
 - 寡占防止フィルタ
 - 運用通知
 - 別枠原資による上位 Qualified Node への報酬
+
+ただし、qualification の主たる真実源は Program Agent ではありません。外部監視が主であり、
+Program Agent は heartbeat 保証と補助運用テレメトリのために v0.1 参加条件として要求されます。
 
 ## SSNP がやらないこと
 

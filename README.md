@@ -9,6 +9,7 @@ This repository contains draft SIP documents, diagrams, and discussion materials
 # Symbol Super Node Program (SSNP) SIP Draft
 
 This repository contains a draft package for the proposed **Symbol Super Node Program (SSNP)**.
+For **v0.1**, SSNP participation requires running Program Agent.
 
 ## Language Policy
 
@@ -64,6 +65,9 @@ It must not:
 Any future changes involving protocol economics require separate governance discussion.
 
 ## Known Open Questions
+
+`Program Agent` mandatory status for **v0.1** is not an open question in this repository.
+It is fixed as an SSNP participation requirement, not as a general requirement for Symbol node operation.
 
 - reward funding source (critical)
 - scoring thresholds tuning

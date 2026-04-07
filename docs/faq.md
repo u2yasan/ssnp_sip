@@ -1,4 +1,4 @@
-# SSNP FAQ: 10 Objections and Counters
+# SSNP FAQ: 11 Objections and Counters
 
 Language: English | [日本語](faq_ja.md)
 
@@ -111,7 +111,21 @@ Counter:
 
 If someone opposes notifications, they need to show a credible alternative operational discipline that prevents the same failures.
 
-## 9. "If the monitoring infrastructure is concentrated, the whole program is self-contradictory."
+## 9. "Why make Program Agent mandatory if external monitoring is the main source of truth?"
+
+Because those two statements solve different problems.
+
+Counter:
+
+- External monitoring answers whether the public node appears healthy from outside.
+- Program Agent answers whether the enrolled SSNP runtime instance is still alive, still bound to the node record, and still able to emit local warning telemetry.
+- v0.1 uses the agent as a participation control for heartbeat assurance and low-volume operational telemetry, not as a replacement for probe evidence.
+- If the program later wants to make the agent optional, it first needs an equally auditable and low-trust alternative.
+
+The mistake is assuming "supplemental" means "optional for participation."
+For v0.1, it is supplemental in authority, but mandatory in participation requirements.
+
+## 10. "If the monitoring infrastructure is concentrated, the whole program is self-contradictory."
 
 That criticism is valid. This is one of the largest implementation risks in SSNP.
 
@@ -124,7 +138,7 @@ Counter:
 The right conclusion is not "cancel SSNP."
 The right conclusion is "do not allow centralized monitoring design."
 
-## 10. "The priority should be increasing node count, not designing a program."
+## 11. "The priority should be increasing node count, not designing a program."
 
 Node count alone is a crude target.
 

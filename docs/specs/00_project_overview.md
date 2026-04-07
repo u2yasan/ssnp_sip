@@ -47,6 +47,7 @@ It is not:
 - `12_program_agent_policy_file.md`: static YAML policy file shape and compatibility rules
 
 ## Consistency Note
-Some repository-level SIP drafts still describe the local agent as optional.
-This spec set is stricter: **Program Agent is required in v0.1 participation requirements**.
-That mismatch must be resolved before claiming spec completeness.
+For v0.1, this repository now treats **Program Agent as required for SSNP participation**.
+This is a program-participation requirement, not a requirement for Symbol node operation outside SSNP.
+If a future version makes Program Agent optional, it must first define an equivalent low-trust,
+low-operations alternative for liveness assurance and supplemental telemetry.

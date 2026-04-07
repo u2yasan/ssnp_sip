@@ -47,6 +47,7 @@ SSNP は **非コンセンサス型の外部レイヤープログラム** であ
 - `12_program_agent_policy_file.md`: 静的 YAML policy file の構造と互換性ルール
 
 ## 整合性メモ
-リポジトリ内の一部 SIP ドラフトは、まだ local agent を optional としている。
-この spec セットはそれより厳しく、**Program Agent 必須** を前提としている。
-完全整合には SIP 側との同期が必要である。
+このリポジトリでは、v0.1 における **SSNP 参加条件として Program Agent 必須** を正式前提とする。
+これは SSNP 外の Symbol node 運用全般に対する必須要件ではない。
+将来バージョンで optional 化するなら、heartbeat と補助テレメトリを置き換える、
+同等に低信頼・低運用負荷の代替手段を先に定義しなければならない。

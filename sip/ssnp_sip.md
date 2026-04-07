@@ -94,6 +94,7 @@ SSNP consists of:
 - an operator notification system.
 
 External monitoring is the primary source of truth. Program Agent data is supplemental and must not override contradictory external evidence.
+For v0.1, however, Program Agent remains a mandatory SSNP participation requirement for liveness assurance and operator telemetry.
 
 ## Registration
 
@@ -116,6 +117,9 @@ An operator must also submit:
 - Program Agent linkage data.
 
 A newly registered node enters an observation period of at least 72 hours before it can become Qualified.
+
+This requirement is scoped to SSNP participation. It does not redefine baseline Symbol node operation outside the program.
+If a future SSNP version allows participation without Program Agent, it must first define an equivalent, auditable alternative for liveness assurance and supplemental telemetry.
 
 The priority is not raw hardware strength in isolation, but whether the node is currently able to continue voting safely and observably.
 

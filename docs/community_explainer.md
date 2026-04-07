@@ -23,10 +23,14 @@ SSNP introduces:
 
 - public node registration,
 - independent monitoring,
+- mandatory Program Agent participation for SSNP v0.1,
 - performance-based ranking,
 - anti-concentration filtering,
 - operator alerts,
 - and a separate reward pool for top qualified nodes.
+
+Program Agent is not the main source of truth for qualification. External monitoring remains primary.
+The agent is required in v0.1 only as an SSNP participation control for heartbeat assurance and supplemental operator telemetry.
 
 ## What SSNP does *not* do
 
