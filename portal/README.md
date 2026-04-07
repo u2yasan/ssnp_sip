@@ -22,18 +22,26 @@ SSNP Program Agent と結合するための最小 Go portal stub です。
 - enrollment challenge は空でない文字列かどうかだけ見ます
 - `policy_version`、profile ID、heartbeat sequence、signature は fail-closed で検証します
 - telemetry は履歴一覧と latest view を返し、runtime state に保存されます
-- notification channel は `email` 前提ですが、v0.1 実装は `stdout` notifier stub です
+- notification channel は `email` のみです
+- email delivery は SMTP + STARTTLS 前提です
+- SMTP password は `SSNP_SMTP_PASSWORD` 環境変数から読みます
+- node の `operator_email` があればそれを優先し、無ければ `--email-to` fallback を使います
 - heartbeat `stale` / `failed` は portal 側 scan で検出します
 - delivery failure は portal operational event として runtime state に記録します
 
 起動:
 
 ```sh
+SSNP_SMTP_PASSWORD=secret \
 go run ./cmd/portal-server \
   --listen 127.0.0.1:8080 \
   --policy ../docs/policies/program_agent_policy.v2026-04.yaml \
   --nodes-config ./nodes.example.yaml \
   --state-path ./portal-state.json \
+  --smtp-host smtp.example.invalid \
+  --smtp-port 587 \
+  --smtp-username ssnp-notify \
+  --smtp-from ssnp@example.invalid \
   --email-to ops@example.invalid
 ```
 
@@ -42,6 +50,10 @@ go run ./cmd/portal-server \
 - `--nodes-config`
 - `--state-path`
 - `--email-to`
+- `--smtp-host`
+- `--smtp-port`
+- `--smtp-username`
+- `--smtp-from`
 - `--heartbeat-stale-after-seconds`
 - `--heartbeat-failed-after-seconds`
 - `--alert-scan-interval-seconds`
@@ -55,6 +67,8 @@ nodes:
     operator_email: "ops@example.invalid"
     enabled: true
 ```
+
+`operator_email` は optional です。空の場合は `--email-to` fallback に流れます。
 
 agent と疎通する例:
 

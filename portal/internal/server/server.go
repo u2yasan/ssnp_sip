@@ -29,6 +29,11 @@ type Config struct {
 	StatePath               string
 	AllowedClockSkewSeconds int
 	NotificationEmailTo     string
+	SMTPHost                string
+	SMTPPort                int
+	SMTPUsername            string
+	SMTPPassword            string
+	SMTPFrom                string
 	HeartbeatStaleAfter     time.Duration
 	HeartbeatFailedAfter    time.Duration
 	AlertScanInterval       time.Duration
@@ -73,9 +78,25 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.Notifier == nil {
 		if strings.TrimSpace(cfg.NotificationEmailTo) == "" {
-			return nil, errors.New("missing notification email")
+			return nil, errors.New("missing fallback notification email")
 		}
-		cfg.Notifier = notifier.StdoutNotifier{}
+		if strings.TrimSpace(cfg.SMTPHost) == "" || strings.TrimSpace(cfg.SMTPUsername) == "" || strings.TrimSpace(cfg.SMTPFrom) == "" {
+			return nil, errors.New("missing smtp configuration")
+		}
+		if cfg.SMTPPort <= 0 {
+			cfg.SMTPPort = 587
+		}
+		if cfg.SMTPPassword == "" {
+			return nil, errors.New("missing smtp password")
+		}
+		cfg.Notifier = notifier.SMTPNotifier{
+			Host:     cfg.SMTPHost,
+			Port:     cfg.SMTPPort,
+			Username: cfg.SMTPUsername,
+			Password: cfg.SMTPPassword,
+			From:     cfg.SMTPFrom,
+			Timeout:  10 * time.Second,
+		}
 	}
 	seedNodes, err := store.LoadNodesConfig(cfg.NodesConfigPath)
 	if err != nil {
@@ -510,9 +531,13 @@ func (s *Server) maybeNotifyAlert(ctx context.Context, nodeID, alertCode, occurr
 			return nil
 		}
 	}
-	recipient := s.cfg.NotificationEmailTo
+	recipient := strings.TrimSpace(s.cfg.NotificationEmailTo)
 	if node, ok := s.store.GetNode(nodeID); ok && strings.TrimSpace(node.OperatorEmail) != "" {
-		recipient = node.OperatorEmail
+		recipient = strings.TrimSpace(node.OperatorEmail)
+	}
+	if recipient == "" {
+		s.recordDeliveryFailure(nodeID, alertCode, severity, occurredAt, now, "email", "", "missing notification recipient")
+		return nil
 	}
 	notification := notifier.Notification{
 		NodeID:     nodeID,
@@ -524,27 +549,7 @@ func (s *Server) maybeNotifyAlert(ctx context.Context, nodeID, alertCode, occurr
 		Message:    notificationMessage(alertCode),
 	}
 	if err := s.notifier.Send(ctx, notification); err != nil {
-		s.store.AddNotificationDelivery(store.NotificationDelivery{
-			NodeID:      nodeID,
-			AlertCode:   alertCode,
-			Severity:    string(severity),
-			Channel:     notification.Channel,
-			Recipient:   notification.Recipient,
-			OccurredAt:  occurredAt,
-			SentAt:      now.Format(time.RFC3339),
-			Status:      "failed",
-			ErrorDetail: err.Error(),
-		})
-		s.store.AddOperationalEvent(store.OperationalEvent{
-			NodeID:         nodeID,
-			EventCode:      operationalEventDeliveryFailure,
-			Severity:       "warning",
-			EventTimestamp: now.Format(time.RFC3339),
-			Detail:         err.Error(),
-		})
-		if persistErr := s.persist(); persistErr != nil {
-			fmt.Fprintf(os.Stderr, "portal-server: failed to persist notification failure for %s: %v\n", nodeID, persistErr)
-		}
+		s.recordDeliveryFailure(nodeID, alertCode, severity, occurredAt, now, notification.Channel, notification.Recipient, err.Error())
 		return nil
 	}
 	s.store.SaveAlertState(store.AlertState{
@@ -566,6 +571,30 @@ func (s *Server) maybeNotifyAlert(ctx context.Context, nodeID, alertCode, occurr
 		Status:     "sent",
 	})
 	return s.persist()
+}
+
+func (s *Server) recordDeliveryFailure(nodeID, alertCode string, severity notifier.Severity, occurredAt string, now time.Time, channel, recipient, detail string) {
+	s.store.AddNotificationDelivery(store.NotificationDelivery{
+		NodeID:      nodeID,
+		AlertCode:   alertCode,
+		Severity:    string(severity),
+		Channel:     channel,
+		Recipient:   recipient,
+		OccurredAt:  occurredAt,
+		SentAt:      now.Format(time.RFC3339),
+		Status:      "failed",
+		ErrorDetail: detail,
+	})
+	s.store.AddOperationalEvent(store.OperationalEvent{
+		NodeID:         nodeID,
+		EventCode:      operationalEventDeliveryFailure,
+		Severity:       "warning",
+		EventTimestamp: now.Format(time.RFC3339),
+		Detail:         detail,
+	})
+	if persistErr := s.persist(); persistErr != nil {
+		fmt.Fprintf(os.Stderr, "portal-server: failed to persist notification failure for %s: %v\n", nodeID, persistErr)
+	}
 }
 
 func severityForAlert(alertCode string) notifier.Severity {

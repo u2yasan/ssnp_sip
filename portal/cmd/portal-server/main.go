@@ -25,7 +25,11 @@ func runMain() error {
 	nodesConfigPath := flag.String("nodes-config", "", "path to known node seed config")
 	statePath := flag.String("state-path", "", "path to runtime state snapshot json")
 	clockSkew := flag.Int("allowed-clock-skew-seconds", 300, "allowed timestamp clock skew in seconds")
-	emailTo := flag.String("email-to", "", "mandatory notification email recipient")
+	emailTo := flag.String("email-to", "", "fallback notification email recipient")
+	smtpHost := flag.String("smtp-host", "", "smtp host")
+	smtpPort := flag.Int("smtp-port", 587, "smtp port")
+	smtpUsername := flag.String("smtp-username", "", "smtp username")
+	smtpFrom := flag.String("smtp-from", "", "smtp from address")
 	staleAfter := flag.Int("heartbeat-stale-after-seconds", 900, "seconds after last heartbeat before stale alert")
 	failedAfter := flag.Int("heartbeat-failed-after-seconds", 1800, "seconds after last heartbeat before failed alert")
 	alertScan := flag.Int("alert-scan-interval-seconds", 60, "seconds between heartbeat alert scans")
@@ -48,6 +52,11 @@ func runMain() error {
 		StatePath:               *statePath,
 		AllowedClockSkewSeconds: *clockSkew,
 		NotificationEmailTo:     *emailTo,
+		SMTPHost:                *smtpHost,
+		SMTPPort:                *smtpPort,
+		SMTPUsername:            *smtpUsername,
+		SMTPPassword:            os.Getenv("SSNP_SMTP_PASSWORD"),
+		SMTPFrom:                *smtpFrom,
 		HeartbeatStaleAfter:     time.Duration(*staleAfter) * time.Second,
 		HeartbeatFailedAfter:    time.Duration(*failedAfter) * time.Second,
 		AlertScanInterval:       time.Duration(*alertScan) * time.Second,

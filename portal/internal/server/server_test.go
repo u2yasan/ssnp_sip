@@ -38,6 +38,7 @@ func TestNewFailsOnBrokenPolicy(t *testing.T) {
 		NodesConfigPath:         nodesPath,
 		StatePath:               filepath.Join(dir, "portal-state.json"),
 		AllowedClockSkewSeconds: 300,
+		Notifier:                &notifier.Recorder{},
 	}); err == nil {
 		t.Fatal("New() error = nil, want broken policy failure")
 	}
@@ -57,7 +58,7 @@ func TestNewFailsOnBrokenNodesConfigAndSnapshot(t *testing.T) {
 		NodesConfigPath:         nodesPath,
 		StatePath:               statePath,
 		AllowedClockSkewSeconds: 300,
-		NotificationEmailTo:     "ops@example.invalid",
+		Notifier:                &notifier.Recorder{},
 	}); err == nil {
 		t.Fatal("New() error = nil, want broken nodes config failure")
 	}
@@ -72,7 +73,7 @@ func TestNewFailsOnBrokenNodesConfigAndSnapshot(t *testing.T) {
 		NodesConfigPath:         nodesPath,
 		StatePath:               statePath,
 		AllowedClockSkewSeconds: 300,
-		NotificationEmailTo:     "ops@example.invalid",
+		Notifier:                &notifier.Recorder{},
 	}); err == nil {
 		t.Fatal("New() error = nil, want broken snapshot failure")
 	}
@@ -311,6 +312,117 @@ func TestTelemetryNotificationCooldownAndDeliveryFailure(t *testing.T) {
 	}
 }
 
+func TestTelemetryUsesFallbackRecipientWhenNodeEmailMissing(t *testing.T) {
+	recorder := &notifier.Recorder{}
+	dir := t.TempDir()
+	nodesPath := writeNodesConfigNoEmail(t, dir)
+	srv, err := New(Config{
+		ListenAddr:              "127.0.0.1:8080",
+		PolicyPath:              testPolicyPath(),
+		NodesConfigPath:         nodesPath,
+		StatePath:               filepath.Join(dir, "portal-state.json"),
+		AllowedClockSkewSeconds: 300,
+		NotificationEmailTo:     "fallback@example.invalid",
+		Notifier:                recorder,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	handler := srv.Handler()
+
+	pub, priv := newKeyPair(t)
+	pubHex := hex.EncodeToString(pub)
+	fingerprint := mustFingerprint(t, pubHex)
+
+	enrollPayload := map[string]any{
+		"node_id":                 "node-abc",
+		"enrollment_challenge_id": "enroll-001",
+		"agent_public_key":        pubHex,
+		"agent_version":           "1.0.0",
+	}
+	signPayload(t, priv, enrollPayload)
+	if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/agent/enroll", enrollPayload); rec.Code != http.StatusOK {
+		t.Fatalf("enroll status = %d, want 200", rec.Code)
+	}
+
+	payload := map[string]any{
+		"schema_version":        "1",
+		"node_id":               "node-abc",
+		"agent_key_fingerprint": fingerprint,
+		"telemetry_timestamp":   time.Now().UTC().Format(time.RFC3339),
+		"policy_version":        "2026-04",
+		"warning_flags":         []string{"portal_unreachable"},
+	}
+	signPayload(t, priv, payload)
+	if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/agent/telemetry", payload); rec.Code != http.StatusOK {
+		t.Fatalf("telemetry status = %d, want 200", rec.Code)
+	}
+	last, ok := recorder.Last()
+	if !ok {
+		t.Fatal("expected notification")
+	}
+	if last.Recipient != "fallback@example.invalid" {
+		t.Fatalf("recipient = %q, want fallback@example.invalid", last.Recipient)
+	}
+}
+
+func TestTelemetryRecordsFailureWhenNoRecipientExists(t *testing.T) {
+	recorder := &notifier.Recorder{}
+	dir := t.TempDir()
+	nodesPath := writeNodesConfigNoEmail(t, dir)
+	srv, err := New(Config{
+		ListenAddr:              "127.0.0.1:8080",
+		PolicyPath:              testPolicyPath(),
+		NodesConfigPath:         nodesPath,
+		StatePath:               filepath.Join(dir, "portal-state.json"),
+		AllowedClockSkewSeconds: 300,
+		Notifier:                recorder,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	handler := srv.Handler()
+
+	pub, priv := newKeyPair(t)
+	pubHex := hex.EncodeToString(pub)
+	fingerprint := mustFingerprint(t, pubHex)
+
+	enrollPayload := map[string]any{
+		"node_id":                 "node-abc",
+		"enrollment_challenge_id": "enroll-001",
+		"agent_public_key":        pubHex,
+		"agent_version":           "1.0.0",
+	}
+	signPayload(t, priv, enrollPayload)
+	if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/agent/enroll", enrollPayload); rec.Code != http.StatusOK {
+		t.Fatalf("enroll status = %d, want 200", rec.Code)
+	}
+
+	payload := map[string]any{
+		"schema_version":        "1",
+		"node_id":               "node-abc",
+		"agent_key_fingerprint": fingerprint,
+		"telemetry_timestamp":   time.Now().UTC().Format(time.RFC3339),
+		"policy_version":        "2026-04",
+		"warning_flags":         []string{"portal_unreachable"},
+	}
+	signPayload(t, priv, payload)
+	if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/agent/telemetry", payload); rec.Code != http.StatusOK {
+		t.Fatalf("telemetry status = %d, want 200", rec.Code)
+	}
+	if recorder.Count() != 0 {
+		t.Fatalf("notification count = %d, want 0", recorder.Count())
+	}
+	events := srv.store.ListOperationalEvents("node-abc", operationalEventDeliveryFailure)
+	if len(events) != 1 {
+		t.Fatalf("operational events = %d, want 1", len(events))
+	}
+	deliveries := srv.store.ListNotificationDeliveries("node-abc", "portal_unreachable")
+	if len(deliveries) != 1 || deliveries[0].Status != "failed" {
+		t.Fatalf("deliveries = %#v, want single failed delivery", deliveries)
+	}
+}
+
 func TestHeartbeatAlertScannerSendsCriticalNotifications(t *testing.T) {
 	recorder := &notifier.Recorder{}
 	srv := mustNewServer(t, testPolicyPath(), recorder)
@@ -515,6 +627,20 @@ func mustNewServer(t *testing.T, policyPath string, n notifier.Notifier) *Server
 		t.Fatalf("New() error = %v", err)
 	}
 	return srv
+}
+
+func writeNodesConfigNoEmail(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "nodes-no-email.yaml")
+	content := `nodes:
+  - node_id: "node-abc"
+    display_name: "Node ABC"
+    enabled: true
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("WriteFile(nodes) error = %v", err)
+	}
+	return path
 }
 
 func testPolicyPath() string {
