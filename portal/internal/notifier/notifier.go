@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 type Severity string
@@ -46,4 +47,19 @@ func (n StdoutNotifier) Send(_ context.Context, notification Notification) error
 		return err
 	}
 	return nil
+}
+
+func Subject(notification Notification) string {
+	return fmt.Sprintf("[SSNP][%s] %s %s", strings.ToUpper(string(notification.Severity)), notification.AlertCode, notification.NodeID)
+}
+
+func Body(notification Notification) string {
+	return fmt.Sprintf(
+		"node_id: %s\nalert_code: %s\nseverity: %s\noccurred_at: %s\nmessage: %s\nnote: dedupe/cooldown may suppress repeats\n",
+		notification.NodeID,
+		notification.AlertCode,
+		notification.Severity,
+		notification.OccurredAt,
+		notification.Message,
+	)
 }

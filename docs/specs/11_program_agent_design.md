@@ -502,7 +502,8 @@ Success response:
 Portal-side operational behavior:
 - accepted telemetry warnings may trigger notification delivery handling;
 - the current stub exposes `email` as the only configured channel;
-- the current stub uses a notifier backend stub rather than real email transport.
+- the current stub uses SMTP with mandatory `STARTTLS` for real email transport;
+- recipient precedence is node-level `operator_email` first, then a global fallback email.
 
 ### `GET /api/v1/agent/telemetry`
 Purpose:

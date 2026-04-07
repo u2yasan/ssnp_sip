@@ -504,7 +504,8 @@ success response:
 portal 側の運用挙動:
 - accept した telemetry warning は notification delivery handling を起動してよい
 - 現在の stub で設定できるチャネルは `email` のみ
-- 現在の stub の notifier backend は実メール配送ではなく stub 実装である
+- 現在の stub の notifier backend は `STARTTLS` 必須の SMTP 実メール配送である
+- recipient の優先順位は node-level `operator_email`、次に global fallback email である
 
 ### `GET /api/v1/agent/telemetry`
 目的:

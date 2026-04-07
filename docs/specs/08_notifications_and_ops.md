@@ -72,7 +72,9 @@ Delivery failure rule:
 ## Portal Stub Delivery Behavior In v0.1
 The current portal stub implements notification delivery as follows:
 - `email` is the only delivery channel exposed by configuration;
-- the delivery backend is a stub notifier that writes structured notification output instead of sending real email;
+- the delivery backend uses SMTP with mandatory `STARTTLS`;
+- recipient precedence is `node.operator_email` first, then the global fallback email;
+- the SMTP password comes from the runtime environment rather than a CLI flag;
 - known nodes come from a separate seed config file;
 - runtime state is stored in a JSON snapshot file;
 - the portal records per-alert delivery attempts in runtime state;

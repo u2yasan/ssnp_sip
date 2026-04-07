@@ -72,7 +72,9 @@ delivery failure ルール:
 ## v0.1 における Portal Stub の Delivery 挙動
 現在の portal stub の通知配送は次のように実装されている。
 - 設定で露出する配送チャネルは `email` のみ
-- 実際の配送 backend は実メール送信ではなく、構造化通知出力を書くだけの stub notifier
+- 実際の配送 backend は `STARTTLS` 必須の SMTP 送信である
+- recipient の優先順位は `node.operator_email`、次に global fallback email である
+- SMTP password は CLI flag ではなく runtime environment から読む
 - known node は別の seed config file から読む
 - runtime state は JSON snapshot file に保存する
 - portal は alert ごとの delivery attempt を runtime state に記録する
