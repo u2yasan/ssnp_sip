@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 
 	"gopkg.in/yaml.v3"
@@ -35,6 +36,73 @@ type TelemetryEvent struct {
 	NodeID             string `json:"node_id"`
 	TelemetryTimestamp string `json:"telemetry_timestamp"`
 	WarningCode        string `json:"warning_code"`
+}
+
+type ProbeEvent struct {
+	ProbeID                  string `json:"probe_id"`
+	NodeID                   string `json:"node_id"`
+	RegionID                 string `json:"region_id"`
+	ObservedAt               string `json:"observed_at"`
+	Endpoint                 string `json:"endpoint"`
+	AvailabilityUp           bool   `json:"availability_up"`
+	FinalizedLagBlocks       *int   `json:"finalized_lag_blocks,omitempty"`
+	ChainLagBlocks           *int   `json:"chain_lag_blocks,omitempty"`
+	SourceHeight             *int   `json:"source_height,omitempty"`
+	PeerHeight               *int   `json:"peer_height,omitempty"`
+	MeasurementWindowSeconds int    `json:"measurement_window_seconds"`
+	HTTPStatus               *int   `json:"http_status,omitempty"`
+	ErrorCode                string `json:"error_code,omitempty"`
+	ResolverIP               string `json:"resolver_ip,omitempty"`
+	Notes                    string `json:"notes,omitempty"`
+}
+
+type DailyQualificationSummary struct {
+	NodeID                           string  `json:"node_id"`
+	DateUTC                          string  `json:"date_utc"`
+	PolicyVersion                    string  `json:"policy_version"`
+	FinalizedLagThresholdBlocks      int     `json:"finalized_lag_threshold_blocks"`
+	ChainLagThresholdBlocks          int     `json:"chain_lag_threshold_blocks"`
+	ValidProbeCount                  int     `json:"valid_probe_count"`
+	AvailabilityUpCount              int     `json:"availability_up_count"`
+	AvailabilityRatio                float64 `json:"availability_ratio"`
+	FinalizedLagMeasurableCount      int     `json:"finalized_lag_measurable_count"`
+	FinalizedLagWithinThresholdCount int     `json:"finalized_lag_within_threshold_count"`
+	FinalizedLagRatio                float64 `json:"finalized_lag_ratio"`
+	ChainLagMeasurableCount          int     `json:"chain_lag_measurable_count"`
+	ChainLagWithinThresholdCount     int     `json:"chain_lag_within_threshold_count"`
+	ChainLagRatio                    float64 `json:"chain_lag_ratio"`
+	RegionCount                      int     `json:"region_count"`
+	AvailabilityPassed               bool    `json:"availability_passed"`
+	FinalizedLagPassed               bool    `json:"finalized_lag_passed"`
+	ChainLagPassed                   bool    `json:"chain_lag_passed"`
+	MultiRegionEvidencePassed        bool    `json:"multi_region_evidence_passed"`
+	QualifiedProbeEvidencePassed     bool    `json:"qualified_probe_evidence_passed"`
+	InsufficientEvidenceReason       string  `json:"insufficient_evidence_reason,omitempty"`
+	GeneratedAt                      string  `json:"generated_at,omitempty"`
+}
+
+type QualifiedDecisionRecord struct {
+	NodeID                     string   `json:"node_id"`
+	DateUTC                    string   `json:"date_utc"`
+	PolicyVersion              string   `json:"policy_version"`
+	ProbeEvidencePassed        bool     `json:"probe_evidence_passed"`
+	HeartbeatPassed            bool     `json:"heartbeat_passed"`
+	HardwarePassed             bool     `json:"hardware_passed"`
+	VotingKeyPassed            bool     `json:"voting_key_passed"`
+	Qualified                  bool     `json:"qualified"`
+	FailureReasons             []string `json:"failure_reasons,omitempty"`
+	InsufficientEvidenceReason string   `json:"insufficient_evidence_reason,omitempty"`
+	DecidedAt                  string   `json:"decided_at"`
+}
+
+type VotingKeyEvidence struct {
+	EvidenceRef            string `json:"evidence_ref"`
+	NodeID                 string `json:"node_id"`
+	ObservedAt             string `json:"observed_at"`
+	CurrentEpoch           int    `json:"current_epoch"`
+	VotingKeyPresent       bool   `json:"voting_key_present"`
+	VotingKeyValidForEpoch bool   `json:"voting_key_valid_for_epoch"`
+	Source                 string `json:"source"`
 }
 
 type LatestTelemetry struct {
@@ -77,24 +145,32 @@ type NodesConfig struct {
 }
 
 type snapshot struct {
-	Nodes                  []Node                 `json:"nodes"`
-	CheckEvents            []CheckEvent           `json:"check_events"`
-	TelemetryEvents        []TelemetryEvent       `json:"telemetry_events"`
-	LatestTelemetry        []LatestTelemetry      `json:"latest_telemetry"`
-	AlertStates            []AlertState           `json:"alert_states"`
-	NotificationDeliveries []NotificationDelivery `json:"notification_deliveries"`
-	OperationalEvents      []OperationalEvent     `json:"operational_events"`
+	Nodes                  []Node                      `json:"nodes"`
+	CheckEvents            []CheckEvent                `json:"check_events"`
+	TelemetryEvents        []TelemetryEvent            `json:"telemetry_events"`
+	ProbeEvents            []ProbeEvent                `json:"probe_events"`
+	DailySummaries         []DailyQualificationSummary `json:"daily_summaries"`
+	QualifiedDecisions     []QualifiedDecisionRecord   `json:"qualified_decisions"`
+	VotingKeyEvidence      []VotingKeyEvidence         `json:"voting_key_evidence"`
+	LatestTelemetry        []LatestTelemetry           `json:"latest_telemetry"`
+	AlertStates            []AlertState                `json:"alert_states"`
+	NotificationDeliveries []NotificationDelivery      `json:"notification_deliveries"`
+	OperationalEvents      []OperationalEvent          `json:"operational_events"`
 }
 
 type Store struct {
-	mu              sync.RWMutex
-	nodes           map[string]Node
-	checkEvents     map[string]CheckEvent
-	telemetryEvents []TelemetryEvent
-	latestTelemetry map[string]LatestTelemetry
-	alertStates     map[string]AlertState
-	deliveries      []NotificationDelivery
-	operational     []OperationalEvent
+	mu                 sync.RWMutex
+	nodes              map[string]Node
+	checkEvents        map[string]CheckEvent
+	telemetryEvents    []TelemetryEvent
+	probeEvents        map[string]ProbeEvent
+	dailySummaries     map[string]DailyQualificationSummary
+	qualifiedDecisions map[string]QualifiedDecisionRecord
+	votingKeyEvidence  map[string]VotingKeyEvidence
+	latestTelemetry    map[string]LatestTelemetry
+	alertStates        map[string]AlertState
+	deliveries         []NotificationDelivery
+	operational        []OperationalEvent
 }
 
 func New(seedNodes []Node) *Store {
@@ -106,10 +182,14 @@ func New(seedNodes []Node) *Store {
 		nodes[node.NodeID] = node
 	}
 	return &Store{
-		nodes:           nodes,
-		checkEvents:     map[string]CheckEvent{},
-		latestTelemetry: map[string]LatestTelemetry{},
-		alertStates:     map[string]AlertState{},
+		nodes:              nodes,
+		checkEvents:        map[string]CheckEvent{},
+		probeEvents:        map[string]ProbeEvent{},
+		dailySummaries:     map[string]DailyQualificationSummary{},
+		qualifiedDecisions: map[string]QualifiedDecisionRecord{},
+		votingKeyEvidence:  map[string]VotingKeyEvidence{},
+		latestTelemetry:    map[string]LatestTelemetry{},
+		alertStates:        map[string]AlertState{},
 	}
 }
 
@@ -255,6 +335,38 @@ func (s *Store) applySnapshot(snap snapshot) error {
 		s.telemetryEvents = append(s.telemetryEvents, event)
 	}
 
+	s.probeEvents = map[string]ProbeEvent{}
+	for _, event := range snap.ProbeEvents {
+		if _, ok := seedNodes[event.NodeID]; !ok {
+			return errors.New("snapshot probe event contains unknown node_id")
+		}
+		s.probeEvents[event.ProbeID] = event
+	}
+
+	s.dailySummaries = map[string]DailyQualificationSummary{}
+	for _, summary := range snap.DailySummaries {
+		if _, ok := seedNodes[summary.NodeID]; !ok {
+			return errors.New("snapshot daily summary contains unknown node_id")
+		}
+		s.dailySummaries[dailySummaryKey(summary.NodeID, summary.DateUTC)] = summary
+	}
+
+	s.qualifiedDecisions = map[string]QualifiedDecisionRecord{}
+	for _, decision := range snap.QualifiedDecisions {
+		if _, ok := seedNodes[decision.NodeID]; !ok {
+			return errors.New("snapshot qualified decision contains unknown node_id")
+		}
+		s.qualifiedDecisions[qualifiedDecisionKey(decision.NodeID, decision.DateUTC)] = decision
+	}
+
+	s.votingKeyEvidence = map[string]VotingKeyEvidence{}
+	for _, evidence := range snap.VotingKeyEvidence {
+		if _, ok := seedNodes[evidence.NodeID]; !ok {
+			return errors.New("snapshot voting key evidence contains unknown node_id")
+		}
+		s.votingKeyEvidence[evidence.EvidenceRef] = evidence
+	}
+
 	s.latestTelemetry = map[string]LatestTelemetry{}
 	for _, event := range snap.LatestTelemetry {
 		if _, ok := seedNodes[event.NodeID]; !ok {
@@ -309,6 +421,44 @@ func (s *Store) snapshot() snapshot {
 		return checks[i].EventID < checks[j].EventID
 	})
 
+	probes := make([]ProbeEvent, 0, len(s.probeEvents))
+	for _, event := range s.probeEvents {
+		probes = append(probes, event)
+	}
+	sort.Slice(probes, func(i, j int) bool {
+		return probes[i].ProbeID < probes[j].ProbeID
+	})
+
+	dailySummaries := make([]DailyQualificationSummary, 0, len(s.dailySummaries))
+	for _, summary := range s.dailySummaries {
+		dailySummaries = append(dailySummaries, summary)
+	}
+	sort.Slice(dailySummaries, func(i, j int) bool {
+		if dailySummaries[i].DateUTC == dailySummaries[j].DateUTC {
+			return dailySummaries[i].NodeID < dailySummaries[j].NodeID
+		}
+		return dailySummaries[i].DateUTC < dailySummaries[j].DateUTC
+	})
+
+	qualifiedDecisions := make([]QualifiedDecisionRecord, 0, len(s.qualifiedDecisions))
+	for _, decision := range s.qualifiedDecisions {
+		qualifiedDecisions = append(qualifiedDecisions, decision)
+	}
+	sort.Slice(qualifiedDecisions, func(i, j int) bool {
+		if qualifiedDecisions[i].DateUTC == qualifiedDecisions[j].DateUTC {
+			return qualifiedDecisions[i].NodeID < qualifiedDecisions[j].NodeID
+		}
+		return qualifiedDecisions[i].DateUTC < qualifiedDecisions[j].DateUTC
+	})
+
+	votingKeyEvidence := make([]VotingKeyEvidence, 0, len(s.votingKeyEvidence))
+	for _, evidence := range s.votingKeyEvidence {
+		votingKeyEvidence = append(votingKeyEvidence, evidence)
+	}
+	sort.Slice(votingKeyEvidence, func(i, j int) bool {
+		return votingKeyEvidence[i].EvidenceRef < votingKeyEvidence[j].EvidenceRef
+	})
+
 	latest := make([]LatestTelemetry, 0, len(s.latestTelemetry))
 	for _, event := range s.latestTelemetry {
 		latest = append(latest, event)
@@ -342,6 +492,10 @@ func (s *Store) snapshot() snapshot {
 		Nodes:                  nodes,
 		CheckEvents:            checks,
 		TelemetryEvents:        telemetry,
+		ProbeEvents:            probes,
+		DailySummaries:         dailySummaries,
+		QualifiedDecisions:     qualifiedDecisions,
+		VotingKeyEvidence:      votingKeyEvidence,
 		LatestTelemetry:        latest,
 		AlertStates:            alerts,
 		NotificationDeliveries: deliveries,
@@ -390,6 +544,123 @@ func (s *Store) GetCheckEvent(eventID string) (CheckEvent, bool) {
 	defer s.mu.RUnlock()
 	event, ok := s.checkEvents[eventID]
 	return event, ok
+}
+
+func (s *Store) SaveProbeEvent(event ProbeEvent) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.probeEvents[event.ProbeID]; exists {
+		return false
+	}
+	s.probeEvents[event.ProbeID] = event
+	return true
+}
+
+func (s *Store) GetProbeEvent(probeID string) (ProbeEvent, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	event, ok := s.probeEvents[probeID]
+	return event, ok
+}
+
+func (s *Store) ListProbeEventsByNodeAndDate(nodeID, dateUTC string) []ProbeEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []ProbeEvent
+	for _, event := range s.probeEvents {
+		if nodeID != "" && event.NodeID != nodeID {
+			continue
+		}
+		if dateUTC != "" && !strings.HasPrefix(event.ObservedAt, dateUTC) {
+			continue
+		}
+		out = append(out, event)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].ObservedAt == out[j].ObservedAt {
+			return out[i].ProbeID < out[j].ProbeID
+		}
+		return out[i].ObservedAt > out[j].ObservedAt
+	})
+	return out
+}
+
+func (s *Store) SaveDailyQualificationSummary(summary DailyQualificationSummary) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.dailySummaries[dailySummaryKey(summary.NodeID, summary.DateUTC)] = summary
+}
+
+func (s *Store) GetDailyQualificationSummary(nodeID, dateUTC string) (DailyQualificationSummary, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	summary, ok := s.dailySummaries[dailySummaryKey(nodeID, dateUTC)]
+	return summary, ok
+}
+
+func (s *Store) SaveQualifiedDecisionRecord(decision QualifiedDecisionRecord) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.qualifiedDecisions[qualifiedDecisionKey(decision.NodeID, decision.DateUTC)] = decision
+}
+
+func (s *Store) GetQualifiedDecisionRecord(nodeID, dateUTC string) (QualifiedDecisionRecord, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	decision, ok := s.qualifiedDecisions[qualifiedDecisionKey(nodeID, dateUTC)]
+	return decision, ok
+}
+
+func dailySummaryKey(nodeID, dateUTC string) string {
+	return nodeID + "\x00" + dateUTC
+}
+
+func qualifiedDecisionKey(nodeID, dateUTC string) string {
+	return nodeID + "\x00" + dateUTC
+}
+
+func (s *Store) LatestCheckEventForNode(nodeID string) (CheckEvent, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var latest CheckEvent
+	found := false
+	for _, event := range s.checkEvents {
+		if event.NodeID != nodeID {
+			continue
+		}
+		if !found || event.CheckedAt > latest.CheckedAt {
+			latest = event
+			found = true
+		}
+	}
+	return latest, found
+}
+
+func (s *Store) SaveVotingKeyEvidence(evidence VotingKeyEvidence) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.votingKeyEvidence[evidence.EvidenceRef]; exists {
+		return false
+	}
+	s.votingKeyEvidence[evidence.EvidenceRef] = evidence
+	return true
+}
+
+func (s *Store) GetLatestVotingKeyEvidenceForNode(nodeID string) (VotingKeyEvidence, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var latest VotingKeyEvidence
+	found := false
+	for _, evidence := range s.votingKeyEvidence {
+		if evidence.NodeID != nodeID {
+			continue
+		}
+		if !found || evidence.ObservedAt > latest.ObservedAt {
+			latest = evidence
+			found = true
+		}
+	}
+	return latest, found
 }
 
 func (s *Store) AddTelemetryEvent(event TelemetryEvent) {
