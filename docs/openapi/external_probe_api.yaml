@@ -40,6 +40,102 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "429":
           $ref: "#/components/responses/ErrorResponse"
+  /api/v1/voting-key-evidence:
+    post:
+      tags: [Probe]
+      summary: Submit voting-key validity evidence for one node
+      operationId: submitVotingKeyEvidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VotingKeyEvidence"
+      responses:
+        "200":
+          description: Voting-key evidence accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceAcceptedResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/v1/operator-group-evidence:
+    post:
+      tags: [Probe]
+      summary: Submit same-operator-group evidence for one node
+      operationId: submitOperatorGroupEvidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperatorGroupEvidence"
+      responses:
+        "200":
+          description: Operator-group evidence accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceAcceptedResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/v1/decentralization-evidence:
+    post:
+      tags: [Probe]
+      summary: Submit decentralization evidence for one node
+      operationId: submitDecentralizationEvidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecentralizationEvidence"
+      responses:
+        "200":
+          description: Decentralization evidence accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceAcceptedResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/v1/domain-evidence:
+    post:
+      tags: [Probe]
+      summary: Submit registrable-domain evidence for one node
+      operationId: submitDomainEvidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DomainEvidence"
+      responses:
+        "200":
+          description: Domain evidence accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceAcceptedResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
   /api/v1/probes/daily-summaries/{node_id}/{date_utc}:
     get:
       tags: [Probe]
@@ -170,6 +266,127 @@ components:
         received_at:
           type: string
           format: date-time
+    EvidenceAcceptedResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - evidence_ref
+        - node_id
+        - received_at
+      properties:
+        status:
+          type: string
+          const: accepted
+        evidence_ref:
+          type: string
+        node_id:
+          type: string
+        received_at:
+          type: string
+          format: date-time
+    VotingKeyEvidence:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - evidence_ref
+        - observed_at
+        - current_epoch
+        - voting_key_present
+        - voting_key_valid_for_epoch
+        - source
+      properties:
+        node_id:
+          type: string
+        evidence_ref:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        current_epoch:
+          type: integer
+          minimum: 0
+        voting_key_present:
+          type: boolean
+        voting_key_valid_for_epoch:
+          type: boolean
+        source:
+          type: string
+    OperatorGroupEvidence:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - evidence_ref
+        - operator_group_id
+        - observed_at
+        - source
+      properties:
+        node_id:
+          type: string
+        evidence_ref:
+          type: string
+        operator_group_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        source:
+          type: string
+    DecentralizationEvidence:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - evidence_ref
+        - observed_at
+        - country_code
+        - asn
+        - provider_id
+        - source
+      properties:
+        node_id:
+          type: string
+        evidence_ref:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        country_code:
+          type: string
+        asn:
+          type: integer
+          minimum: 1
+        provider_id:
+          type: string
+        infrastructure_id:
+          type:
+            - string
+            - "null"
+        source:
+          type: string
+    DomainEvidence:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - evidence_ref
+        - observed_at
+        - registrable_domain
+        - source
+      properties:
+        node_id:
+          type: string
+        evidence_ref:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        registrable_domain:
+          type: string
+        source:
+          type: string
     DailyQualificationSummary:
       type: object
       additionalProperties: false

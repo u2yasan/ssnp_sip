@@ -100,6 +100,10 @@ Constraints:
 - re-enrollment must revoke the previous active agent key;
 - one node record must not accept simultaneous active agent identities by default.
 
+Current stub note:
+- the portal stub issues enrollment challenges from a dedicated write endpoint and validates expiry and one-time use before accepting enrollment;
+- the portal stub increments `enrollment_generation` on each successful enrollment and rejects later heartbeats whose generation does not match the active node record.
+
 ## Agent Identity and Keys
 Program Agent needs its own dedicated signing key.
 
@@ -250,6 +254,10 @@ Heartbeat exists to answer one question: "is the enrolled agent instance current
 - retry on transient failure with bounded backoff;
 - never queue unlimited offline backlog.
 
+Current stub note:
+- the agent stub retries heartbeat submission with bounded retry attempts and exponential backoff inside the heartbeat loop;
+- local observation summary flags are currently limited to coarse warning-style flags such as `portal_unreachable`, `voting_key_expiry_risk`, `certificate_expiry_risk`, and `local_api_unreachable`.
+
 ### Liveness rule for v0.1
 - `healthy`: at least 2 valid heartbeats received within the last 15 minutes;
 - `stale`: fewer than 2 valid heartbeats in 15 minutes but at least 1 valid heartbeat in 30 minutes;
@@ -260,6 +268,7 @@ A heartbeat is valid only if:
 - the signature verifies against the active enrolled agent key;
 - the timestamp is within acceptable skew;
 - the sequence number is newer than the last accepted sequence;
+- the `enrollment_generation` matches the active enrolled node record;
 - the node record is still active.
 
 ## Supplemental Telemetry
@@ -342,9 +351,12 @@ Portal-side handling rules in the current stub:
 - known nodes come from a seed config file;
 - delivery and dedupe state are stored in a JSON snapshot file in v0.1;
 - notification delivery failure is recorded as an operational event and must not change qualification by itself.
+- the current stub refreshes voting-key and certificate-expiry checks during the recurring heartbeat loop;
+- the current stub does not yet emit a dedicated domain-expiry warning.
 
 ## Portal API Contract
 The portal-side agent interface should stay minimal:
+- issue enrollment challenge;
 - enroll agent;
 - revoke or rotate agent identity;
 - receive signed heartbeat;
@@ -447,6 +459,23 @@ Success response:
 }
 ```
 
+### `POST /api/v1/agent/enrollment-challenges`
+Purpose:
+- issue a short-lived one-time challenge for one registered node record before enrollment.
+
+Request body:
+- `node_id`
+
+Success response:
+```json
+{
+  "status": "ok",
+  "challenge_id": "node-abc-1712476800000000000",
+  "node_id": "node-abc",
+  "expires_at": "2026-04-06T10:10:00Z"
+}
+```
+
 ### `POST /api/v1/agent/heartbeat`
 Purpose:
 - receive a signed heartbeat from the enrolled agent.
@@ -466,8 +495,9 @@ Success response:
 Portal-side operational behavior:
 - the portal may derive `heartbeat_stale` and `heartbeat_failed` alerts from accepted heartbeat timestamps;
 - the current stub uses:
-  - `stale` after 15 minutes without an accepted heartbeat;
-  - `failed` after 30 minutes without an accepted heartbeat.
+  - `healthy` when at least 2 valid heartbeats exist within the last 15 minutes;
+  - `stale` when fewer than 2 valid heartbeats exist in 15 minutes but at least 1 valid heartbeat exists in 30 minutes;
+  - `failed` when no valid heartbeat exists in the last 30 minutes.
 
 ### `POST /api/v1/agent/checks`
 Purpose:

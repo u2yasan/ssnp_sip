@@ -36,6 +36,29 @@ The system must never allow self-reported agent data to override contradictory e
 - failure of one probe region must not invalidate the entire evaluation set;
 - qualification and reward-eligibility decisions must be separable.
 
+## Current Stub Scope In v0.1
+The current portal stub now implements the following internal evidence flows in
+addition to probe-event ingestion:
+- short-lived enrollment-challenge issuance for agent enrollment;
+- signed agent heartbeat, telemetry, and hardware-check writes;
+- voting-key evidence writes;
+- operator-group evidence writes;
+- decentralization evidence writes;
+- registrable-domain evidence writes.
+
+The current stub also derives:
+- daily qualification summaries from raw probe events;
+- qualified decisions from probe evidence, heartbeat state, hardware checks, voting-key evidence, and the 72-hour observation window;
+- ranking records from `S = 0.7 * B + 0.3 * D`;
+- reward-eligibility decisions from ranking plus anti-concentration filters;
+- reward-allocation records from reward eligibility plus daily pool configuration.
+
+This remains a stub architecture:
+- no separate database-backed qualification service exists;
+- no separate scoring worker exists;
+- evidence is stored in the portal runtime snapshot;
+- read and write responsibilities are still served from one process.
+
 ## External Probe Data Model
 External probe ingestion must use a two-stage model:
 - raw probe events are stored as immutable observation records;

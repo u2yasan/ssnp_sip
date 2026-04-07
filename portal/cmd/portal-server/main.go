@@ -33,6 +33,7 @@ func runMain() error {
 	staleAfter := flag.Int("heartbeat-stale-after-seconds", 900, "seconds after last heartbeat before stale alert")
 	failedAfter := flag.Int("heartbeat-failed-after-seconds", 1800, "seconds after last heartbeat before failed alert")
 	alertScan := flag.Int("alert-scan-interval-seconds", 60, "seconds between heartbeat alert scans")
+	nominalDailyPool := flag.Float64("nominal-daily-pool", 0, "nominal daily reward pool")
 	flag.Parse()
 
 	if *policyPath == "" {
@@ -60,6 +61,7 @@ func runMain() error {
 		HeartbeatStaleAfter:     time.Duration(*staleAfter) * time.Second,
 		HeartbeatFailedAfter:    time.Duration(*failedAfter) * time.Second,
 		AlertScanInterval:       time.Duration(*alertScan) * time.Second,
+		NominalDailyPool:        *nominalDailyPool,
 	})
 	if err != nil {
 		return err

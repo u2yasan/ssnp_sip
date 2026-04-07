@@ -27,7 +27,7 @@ MVP notification channel policy:
 - finalized lag critical
 - voting key expired
 - certificate expiry near term
-- Program Agent missing or stale beyond threshold
+- Program Agent missing or failed beyond threshold
 
 ### Warning
 - sync lag
@@ -82,6 +82,9 @@ The current portal stub implements notification delivery as follows:
 - dedupe and cooldown state survive restart when the snapshot persists successfully.
 
 Current portal-side alert generation:
+- probe-derived alerts:
+  - `node_outage`
+  - `finalized_lag`
 - telemetry warnings received from the agent:
   - `portal_unreachable`
   - `voting_key_expiry_risk`
@@ -94,8 +97,19 @@ Current portal-side alert generation:
 Current portal-side heartbeat thresholds:
 - `heartbeat_stale`
   - triggered when the last accepted heartbeat is older than 15 minutes;
+  - treated as `warning` severity in the current stub;
 - `heartbeat_failed`
   - triggered when the last accepted heartbeat is older than 30 minutes.
+  - treated as `critical` severity in the current stub.
+
+Current portal-side probe alert behavior:
+- `node_outage`
+  - triggered when the derived daily availability result for a node fails the qualification threshold;
+- `finalized_lag`
+  - triggered when the derived daily finalized-lag result for a node fails the qualification threshold.
+
+These probe-derived alerts are currently emitted from qualification-artifact rebuilds,
+not from a separate alerting worker.
 
 ## Program Agent Warning Inputs In v0.1
 Agent-originated warnings are supplemental control-plane and operator signals only.
@@ -108,6 +122,7 @@ Current v0.1 input sources:
   - derived from local inspection of the `monitored_endpoint` leaf certificate expiry;
 - portal-unreachable warning
   - derived from repeated agent-to-portal communication failures;
+  - the current stub marks the warning pending after 3 consecutive failures and emits it on recovery;
 - Program Agent heartbeat failure alerts
   - derived from portal-side stale/failed heartbeat observation, not from the agent's own warning telemetry.
 
@@ -117,4 +132,5 @@ Operational distinction:
 - these must not be collapsed into a single operational category.
 
 Implementation note:
-- the portal stub currently evaluates heartbeat `stale` / `failed` by an internal scan loop and applies the same severity-based dedupe rules to those alerts.
+- the portal stub currently evaluates heartbeat `stale` / `failed` by an internal scan loop and applies the same severity-based dedupe rules to those alerts;
+- the agent stub currently refreshes voting-key and certificate-expiry checks on each heartbeat loop iteration rather than only at process start.

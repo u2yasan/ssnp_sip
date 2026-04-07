@@ -13,6 +13,28 @@ tags:
   - name: Agent
     description: Program Agent endpoints
 paths:
+  /api/v1/agent/enrollment-challenges:
+    post:
+      tags: [Agent]
+      summary: Issue a short-lived enrollment challenge for one registered node
+      operationId: createEnrollmentChallenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollmentChallengeRequest"
+      responses:
+        "200":
+          description: Enrollment challenge issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollmentChallengeResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
   /api/v1/agent/enroll:
     post:
       tags: [Agent]
@@ -232,6 +254,33 @@ components:
           type: string
         signature:
           type: string
+    EnrollmentChallengeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+      properties:
+        node_id:
+          type: string
+    EnrollmentChallengeResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - challenge_id
+        - node_id
+        - expires_at
+      properties:
+        status:
+          type: string
+          const: ok
+        challenge_id:
+          type: string
+        node_id:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
     EnrollResponse:
       type: object
       additionalProperties: false

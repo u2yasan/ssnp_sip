@@ -144,6 +144,52 @@ paths:
                     items: []
         "400":
           $ref: "#/components/responses/ErrorResponse"
+  /api/v1/reward-allocations/{date_utc}:
+    get:
+      tags: [Portal Read]
+      summary: Read reward allocation records for one UTC date
+      description: |
+        Returns daily reward allocation records derived from the requested
+        date's reward-eligibility decisions. If reward allocation has not been
+        computed for that date, the response is `200` with an empty `items`
+        array.
+      operationId: getRewardAllocations
+      parameters:
+        - $ref: "#/components/parameters/DateUTCPath"
+      responses:
+        "200":
+          description: Reward allocation records returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RewardAllocationListResponse"
+              examples:
+                oneNode:
+                  value:
+                    date_utc: "2026-04-07"
+                    items:
+                      - node_id: "node-abc"
+                        date_utc: "2026-04-07"
+                        policy_version: "2026-04"
+                        rank_position: 1
+                        qualified_node_count: 2
+                        nominal_daily_pool: 1000
+                        participation_rate: 0.30
+                        distributed_pool: 300
+                        reserve_pool: 700
+                        band_label: "1-5"
+                        band_share: 0.25
+                        band_pool_amount: 75
+                        band_eligible_count: 2
+                        reward_amount: 37.5
+                        reward_eligible: true
+                        computed_at: "2026-04-07T00:00:10Z"
+                empty:
+                  value:
+                    date_utc: "2026-04-08"
+                    items: []
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
   /api/v1/public-node-status/{date_utc}:
     get:
       tags: [Portal Read]
@@ -266,6 +312,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RewardEligibilityRecord"
+    RewardAllocationListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - date_utc
+        - items
+      properties:
+        date_utc:
+          type: string
+          format: date
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RewardAllocationRecord"
     PublicNodeStatusListResponse:
       type: object
       additionalProperties: false
@@ -382,6 +442,66 @@ components:
             - string
             - "null"
         decided_at:
+          type: string
+          format: date-time
+    RewardAllocationRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - node_id
+        - date_utc
+        - policy_version
+        - rank_position
+        - qualified_node_count
+        - nominal_daily_pool
+        - participation_rate
+        - distributed_pool
+        - reserve_pool
+        - band_label
+        - band_share
+        - band_pool_amount
+        - band_eligible_count
+        - reward_amount
+        - reward_eligible
+        - computed_at
+      properties:
+        node_id:
+          type: string
+        date_utc:
+          type: string
+          format: date
+        policy_version:
+          type: string
+        rank_position:
+          type: integer
+          minimum: 1
+        qualified_node_count:
+          type: integer
+          minimum: 0
+        nominal_daily_pool:
+          type: number
+        participation_rate:
+          type: number
+        distributed_pool:
+          type: number
+        reserve_pool:
+          type: number
+        band_label:
+          type: string
+        band_share:
+          type: number
+        band_pool_amount:
+          type: number
+        band_eligible_count:
+          type: integer
+          minimum: 0
+        reward_amount:
+          type: number
+        reward_eligible:
+          type: boolean
+        exclusion_reason:
+          type: string
+        computed_at:
           type: string
           format: date-time
     PublicNodeStatus:

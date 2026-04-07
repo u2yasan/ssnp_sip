@@ -154,6 +154,26 @@ type RewardEligibilityRecord struct {
 	DecidedAt       string `json:"decided_at"`
 }
 
+type RewardAllocationRecord struct {
+	NodeID                     string  `json:"node_id"`
+	DateUTC                    string  `json:"date_utc"`
+	PolicyVersion              string  `json:"policy_version"`
+	RankPosition               int     `json:"rank_position"`
+	QualifiedNodeCount         int     `json:"qualified_node_count"`
+	NominalDailyPool           float64 `json:"nominal_daily_pool"`
+	ParticipationRate          float64 `json:"participation_rate"`
+	DistributedPool            float64 `json:"distributed_pool"`
+	ReservePool                float64 `json:"reserve_pool"`
+	BandLabel                  string  `json:"band_label"`
+	BandShare                  float64 `json:"band_share"`
+	BandPoolAmount             float64 `json:"band_pool_amount"`
+	BandEligibleCount          int     `json:"band_eligible_count"`
+	RewardAmount               float64 `json:"reward_amount"`
+	RewardEligible             bool    `json:"reward_eligible"`
+	ExclusionReason            string  `json:"exclusion_reason,omitempty"`
+	ComputedAt                 string  `json:"computed_at"`
+}
+
 type OperatorGroupEvidence struct {
 	EvidenceRef     string `json:"evidence_ref"`
 	NodeID          string `json:"node_id"`
@@ -170,6 +190,25 @@ type VotingKeyEvidence struct {
 	VotingKeyPresent       bool   `json:"voting_key_present"`
 	VotingKeyValidForEpoch bool   `json:"voting_key_valid_for_epoch"`
 	Source                 string `json:"source"`
+}
+
+type DecentralizationEvidence struct {
+	EvidenceRef  string `json:"evidence_ref"`
+	NodeID       string `json:"node_id"`
+	ObservedAt   string `json:"observed_at"`
+	CountryCode  string `json:"country_code"`
+	ASN          int    `json:"asn"`
+	ProviderID   string `json:"provider_id"`
+	InfrastructureID string `json:"infrastructure_id,omitempty"`
+	Source       string `json:"source"`
+}
+
+type DomainEvidence struct {
+	EvidenceRef       string `json:"evidence_ref"`
+	NodeID            string `json:"node_id"`
+	ObservedAt        string `json:"observed_at"`
+	RegistrableDomain string `json:"registrable_domain"`
+	Source            string `json:"source"`
 }
 
 type LatestTelemetry struct {
@@ -223,8 +262,11 @@ type snapshot struct {
 	BasePerformanceRecords []BasePerformanceRecord     `json:"base_performance_records"`
 	RankingRecords         []RankingRecord             `json:"ranking_records"`
 	RewardEligibility      []RewardEligibilityRecord   `json:"reward_eligibility"`
+	RewardAllocations      []RewardAllocationRecord    `json:"reward_allocations"`
 	OperatorGroupEvidence  []OperatorGroupEvidence     `json:"operator_group_evidence"`
 	VotingKeyEvidence      []VotingKeyEvidence         `json:"voting_key_evidence"`
+	DecentralizationEvidence []DecentralizationEvidence `json:"decentralization_evidence"`
+	DomainEvidence        []DomainEvidence            `json:"domain_evidence"`
 	LatestTelemetry        []LatestTelemetry           `json:"latest_telemetry"`
 	AlertStates            []AlertState                `json:"alert_states"`
 	NotificationDeliveries []NotificationDelivery      `json:"notification_deliveries"`
@@ -244,8 +286,11 @@ type Store struct {
 	basePerformance    map[string]BasePerformanceRecord
 	rankingRecords     map[string]RankingRecord
 	rewardEligibility  map[string]RewardEligibilityRecord
+	rewardAllocations  map[string]RewardAllocationRecord
 	operatorGroups     map[string]OperatorGroupEvidence
 	votingKeyEvidence  map[string]VotingKeyEvidence
+	decentralization   map[string]DecentralizationEvidence
+	domainEvidence     map[string]DomainEvidence
 	latestTelemetry    map[string]LatestTelemetry
 	alertStates        map[string]AlertState
 	deliveries         []NotificationDelivery
@@ -271,8 +316,11 @@ func New(seedNodes []Node) *Store {
 		basePerformance:    map[string]BasePerformanceRecord{},
 		rankingRecords:     map[string]RankingRecord{},
 		rewardEligibility:  map[string]RewardEligibilityRecord{},
+		rewardAllocations:  map[string]RewardAllocationRecord{},
 		operatorGroups:     map[string]OperatorGroupEvidence{},
 		votingKeyEvidence:  map[string]VotingKeyEvidence{},
+		decentralization:   map[string]DecentralizationEvidence{},
+		domainEvidence:     map[string]DomainEvidence{},
 		latestTelemetry:    map[string]LatestTelemetry{},
 		alertStates:        map[string]AlertState{},
 	}
@@ -484,6 +532,13 @@ func (s *Store) applySnapshot(snap snapshot) error {
 		}
 		s.rewardEligibility[rewardEligibilityKey(record.NodeID, record.DateUTC)] = record
 	}
+	s.rewardAllocations = map[string]RewardAllocationRecord{}
+	for _, record := range snap.RewardAllocations {
+		if _, ok := seedNodes[record.NodeID]; !ok {
+			return errors.New("snapshot reward allocation contains unknown node_id")
+		}
+		s.rewardAllocations[rewardAllocationKey(record.NodeID, record.DateUTC)] = record
+	}
 
 	s.operatorGroups = map[string]OperatorGroupEvidence{}
 	for _, evidence := range snap.OperatorGroupEvidence {
@@ -499,6 +554,20 @@ func (s *Store) applySnapshot(snap snapshot) error {
 			return errors.New("snapshot voting key evidence contains unknown node_id")
 		}
 		s.votingKeyEvidence[evidence.EvidenceRef] = evidence
+	}
+	s.decentralization = map[string]DecentralizationEvidence{}
+	for _, evidence := range snap.DecentralizationEvidence {
+		if _, ok := seedNodes[evidence.NodeID]; !ok {
+			return errors.New("snapshot decentralization evidence contains unknown node_id")
+		}
+		s.decentralization[evidence.EvidenceRef] = evidence
+	}
+	s.domainEvidence = map[string]DomainEvidence{}
+	for _, evidence := range snap.DomainEvidence {
+		if _, ok := seedNodes[evidence.NodeID]; !ok {
+			return errors.New("snapshot domain evidence contains unknown node_id")
+		}
+		s.domainEvidence[evidence.EvidenceRef] = evidence
 	}
 
 	s.latestTelemetry = map[string]LatestTelemetry{}
@@ -646,6 +715,20 @@ func (s *Store) snapshot() snapshot {
 		return rewardEligibility[i].DateUTC < rewardEligibility[j].DateUTC
 	})
 
+	rewardAllocations := make([]RewardAllocationRecord, 0, len(s.rewardAllocations))
+	for _, record := range s.rewardAllocations {
+		rewardAllocations = append(rewardAllocations, record)
+	}
+	sort.Slice(rewardAllocations, func(i, j int) bool {
+		if rewardAllocations[i].DateUTC == rewardAllocations[j].DateUTC {
+			if rewardAllocations[i].RankPosition == rewardAllocations[j].RankPosition {
+				return rewardAllocations[i].NodeID < rewardAllocations[j].NodeID
+			}
+			return rewardAllocations[i].RankPosition < rewardAllocations[j].RankPosition
+		}
+		return rewardAllocations[i].DateUTC < rewardAllocations[j].DateUTC
+	})
+
 	operatorGroupEvidence := make([]OperatorGroupEvidence, 0, len(s.operatorGroups))
 	for _, evidence := range s.operatorGroups {
 		operatorGroupEvidence = append(operatorGroupEvidence, evidence)
@@ -660,6 +743,22 @@ func (s *Store) snapshot() snapshot {
 	}
 	sort.Slice(votingKeyEvidence, func(i, j int) bool {
 		return votingKeyEvidence[i].EvidenceRef < votingKeyEvidence[j].EvidenceRef
+	})
+
+	decentralizationEvidence := make([]DecentralizationEvidence, 0, len(s.decentralization))
+	for _, evidence := range s.decentralization {
+		decentralizationEvidence = append(decentralizationEvidence, evidence)
+	}
+	sort.Slice(decentralizationEvidence, func(i, j int) bool {
+		return decentralizationEvidence[i].EvidenceRef < decentralizationEvidence[j].EvidenceRef
+	})
+
+	domainEvidence := make([]DomainEvidence, 0, len(s.domainEvidence))
+	for _, evidence := range s.domainEvidence {
+		domainEvidence = append(domainEvidence, evidence)
+	}
+	sort.Slice(domainEvidence, func(i, j int) bool {
+		return domainEvidence[i].EvidenceRef < domainEvidence[j].EvidenceRef
 	})
 
 	latest := make([]LatestTelemetry, 0, len(s.latestTelemetry))
@@ -703,8 +802,11 @@ func (s *Store) snapshot() snapshot {
 		BasePerformanceRecords: basePerformance,
 		RankingRecords:         rankingRecords,
 		RewardEligibility:      rewardEligibility,
+		RewardAllocations:      rewardAllocations,
 		OperatorGroupEvidence:  operatorGroupEvidence,
 		VotingKeyEvidence:      votingKeyEvidence,
+		DecentralizationEvidence: decentralizationEvidence,
+		DomainEvidence:         domainEvidence,
 		LatestTelemetry:        latest,
 		AlertStates:            alerts,
 		NotificationDeliveries: deliveries,
@@ -969,6 +1071,38 @@ func (s *Store) ListRewardEligibilityRecordsByDate(dateUTC string) []RewardEligi
 	return out
 }
 
+func (s *Store) ReplaceRewardAllocationRecordsForDate(dateUTC string, records []RewardAllocationRecord) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, record := range s.rewardAllocations {
+		if record.DateUTC == dateUTC {
+			delete(s.rewardAllocations, key)
+		}
+	}
+	for _, record := range records {
+		s.rewardAllocations[rewardAllocationKey(record.NodeID, record.DateUTC)] = record
+	}
+}
+
+func (s *Store) ListRewardAllocationRecordsByDate(dateUTC string) []RewardAllocationRecord {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []RewardAllocationRecord
+	for _, record := range s.rewardAllocations {
+		if dateUTC != "" && record.DateUTC != dateUTC {
+			continue
+		}
+		out = append(out, record)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].RankPosition == out[j].RankPosition {
+			return out[i].NodeID < out[j].NodeID
+		}
+		return out[i].RankPosition < out[j].RankPosition
+	})
+	return out
+}
+
 func (s *Store) SaveOperatorGroupEvidence(evidence OperatorGroupEvidence) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1033,6 +1167,10 @@ func rankingRecordKey(nodeID, dateUTC string) string {
 }
 
 func rewardEligibilityKey(nodeID, dateUTC string) string {
+	return nodeID + "\x00" + dateUTC
+}
+
+func rewardAllocationKey(nodeID, dateUTC string) string {
 	return nodeID + "\x00" + dateUTC
 }
 
@@ -1101,6 +1239,66 @@ func (s *Store) SaveVotingKeyEvidence(evidence VotingKeyEvidence) bool {
 	}
 	s.votingKeyEvidence[evidence.EvidenceRef] = evidence
 	return true
+}
+
+func (s *Store) SaveDecentralizationEvidence(evidence DecentralizationEvidence) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.decentralization[evidence.EvidenceRef]; exists {
+		return false
+	}
+	s.decentralization[evidence.EvidenceRef] = evidence
+	return true
+}
+
+func (s *Store) SaveDomainEvidence(evidence DomainEvidence) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.domainEvidence[evidence.EvidenceRef]; exists {
+		return false
+	}
+	s.domainEvidence[evidence.EvidenceRef] = evidence
+	return true
+}
+
+func (s *Store) GetLatestDomainEvidenceForNodeAndDate(nodeID, dateUTC string) (DomainEvidence, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var latest DomainEvidence
+	found := false
+	for _, evidence := range s.domainEvidence {
+		if evidence.NodeID != nodeID {
+			continue
+		}
+		if dateUTC != "" && !strings.HasPrefix(evidence.ObservedAt, dateUTC) {
+			continue
+		}
+		if !found || evidence.ObservedAt > latest.ObservedAt {
+			latest = evidence
+			found = true
+		}
+	}
+	return latest, found
+}
+
+func (s *Store) GetLatestDecentralizationEvidenceForNodeAndDate(nodeID, dateUTC string) (DecentralizationEvidence, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var latest DecentralizationEvidence
+	found := false
+	for _, evidence := range s.decentralization {
+		if evidence.NodeID != nodeID {
+			continue
+		}
+		if dateUTC != "" && !strings.HasPrefix(evidence.ObservedAt, dateUTC) {
+			continue
+		}
+		if !found || evidence.ObservedAt > latest.ObservedAt {
+			latest = evidence
+			found = true
+		}
+	}
+	return latest, found
 }
 
 func (s *Store) GetLatestVotingKeyEvidenceForNode(nodeID string) (VotingKeyEvidence, bool) {
