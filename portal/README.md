@@ -19,6 +19,7 @@ SSNP Program Agent と結合するための最小 Go portal stub です。
 - `POST /api/v1/agent/telemetry`
 - `POST /api/v1/decentralization-evidence`
 - `POST /api/v1/domain-evidence`
+- `POST /api/v1/operator-group-evidence`
 - `POST /api/v1/shared-control-plane-evidence`
 
 制約:
@@ -41,6 +42,7 @@ SSNP Program Agent と結合するための最小 Go portal stub です。
 - ranking は `S = 0.7 * B + 0.3 * D` を使います
 - `reward-eligibility` は same operator group と same registrable domain を hard filter として使います
 - `reward-eligibility` は shared control plane evidence も hard filter として使います
+- `operator-group-evidence` と `shared-control-plane-evidence` は `review_state=accepted` の証拠だけを reward exclusion に使います
 - `reward-eligibility` は exclusion provenance も返します
 - `reward-allocations` は `--nominal-daily-pool` と participation adjustment / rank band allocation を使って計算されます
 - `operator-node-status` は `unknown_node_id` と `missing_qualified_decision` を `404` で返します
@@ -138,6 +140,10 @@ curl "http://127.0.0.1:8080/api/v1/reward-allocations/2026-04-07"
 curl "http://127.0.0.1:8080/api/v1/public-node-status/2026-04-07"
 curl "http://127.0.0.1:8080/api/v1/operator-node-status/node-abc/2026-04-07"
 ```
+
+`operator-group-evidence` と `shared-control-plane-evidence` は `source` に
+`manual_review`, `probe_derived`, `operator_submitted` を受け付けます。
+`review_state` は省略時 `accepted` です。
 
 開発メモ:
 

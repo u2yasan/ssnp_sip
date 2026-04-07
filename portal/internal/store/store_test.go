@@ -176,6 +176,7 @@ func TestLoadNodesConfigAndSnapshotRoundTrip(t *testing.T) {
 		OperatorGroupID: "operator-1",
 		ObservedAt:      "2026-04-06T10:04:30Z",
 		Source:          "manual_review",
+		ReviewState:     "accepted",
 	}) {
 		t.Fatal("expected operator group evidence save")
 	}

@@ -172,6 +172,7 @@ type OperatorGroupEvidence struct {
 	OperatorGroupID string `json:"operator_group_id"`
 	ObservedAt      string `json:"observed_at"`
 	Source          string `json:"source"`
+	ReviewState     string `json:"review_state"`
 }
 
 type VotingKeyEvidence struct {
@@ -210,6 +211,7 @@ type SharedControlPlaneEvidence struct {
 	ControlPlaneID string `json:"control_plane_id"`
 	Classification string `json:"classification"`
 	Source         string `json:"source"`
+	ReviewState    string `json:"review_state"`
 }
 
 type LatestTelemetry struct {

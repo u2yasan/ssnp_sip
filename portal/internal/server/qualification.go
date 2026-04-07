@@ -377,7 +377,7 @@ func (s *Server) rebuildRewardEligibility(dateUTC string, rankings []store.Ranki
 	seenControlPlanes := map[string]struct{}{}
 	for _, ranking := range rankings {
 		operatorGroupID := ranking.NodeID
-		if evidence, ok := s.store.GetLatestOperatorGroupEvidenceForNodeAndDate(ranking.NodeID, dateUTC); ok && strings.TrimSpace(evidence.OperatorGroupID) != "" {
+		if evidence, ok := s.store.GetLatestOperatorGroupEvidenceForNodeAndDate(ranking.NodeID, dateUTC); ok && evidence.ReviewState == "accepted" && strings.TrimSpace(evidence.OperatorGroupID) != "" {
 			operatorGroupID = evidence.OperatorGroupID
 		} else if ranking.OperatorGroupID != "" {
 			operatorGroupID = ranking.OperatorGroupID
@@ -405,7 +405,7 @@ func (s *Server) rebuildRewardEligibility(dateUTC string, rankings []store.Ranki
 				seenDomains[domain] = struct{}{}
 			}
 		}
-		if evidence, ok := s.store.GetLatestSharedControlPlaneEvidenceForNodeAndDate(ranking.NodeID, dateUTC); ok && strings.TrimSpace(evidence.ControlPlaneID) != "" {
+		if evidence, ok := s.store.GetLatestSharedControlPlaneEvidenceForNodeAndDate(ranking.NodeID, dateUTC); ok && evidence.ReviewState == "accepted" && strings.TrimSpace(evidence.ControlPlaneID) != "" {
 			controlPlaneID := strings.TrimSpace(evidence.ControlPlaneID)
 			if _, exists := seenControlPlanes[controlPlaneID]; exists && exclusionReason == "" {
 				rewardEligible = false

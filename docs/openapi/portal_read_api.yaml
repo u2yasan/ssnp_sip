@@ -171,9 +171,13 @@ paths:
                       - node_id: "node-abc"
                         date_utc: "2026-04-07"
                         operator_group_id: "operator-1"
+                        operator_group_source: "manual_review"
+                        operator_group_review_state: "accepted"
                         registrable_domain: "example.net"
                         shared_control_plane_id: "provider-x-ops"
                         shared_control_classification: "managed_provider"
+                        shared_control_source: "manual_review"
+                        shared_control_review_state: "accepted"
                 empty:
                   value:
                     date_utc: "2026-04-08"
@@ -526,6 +530,14 @@ components:
           type:
             - string
             - "null"
+        operator_group_source:
+          type:
+            - string
+            - "null"
+        operator_group_review_state:
+          type:
+            - string
+            - "null"
         registrable_domain:
           type:
             - string
@@ -535,6 +547,14 @@ components:
             - string
             - "null"
         shared_control_classification:
+          type:
+            - string
+            - "null"
+        shared_control_source:
+          type:
+            - string
+            - "null"
+        shared_control_review_state:
           type:
             - string
             - "null"

@@ -79,9 +79,13 @@ type antiConcentrationEvidenceView struct {
 	NodeID                      string `json:"node_id"`
 	DateUTC                     string `json:"date_utc"`
 	OperatorGroupID             string `json:"operator_group_id,omitempty"`
+	OperatorGroupSource         string `json:"operator_group_source,omitempty"`
+	OperatorGroupReviewState    string `json:"operator_group_review_state,omitempty"`
 	RegistrableDomain           string `json:"registrable_domain,omitempty"`
 	SharedControlPlaneID        string `json:"shared_control_plane_id,omitempty"`
 	SharedControlClassification string `json:"shared_control_classification,omitempty"`
+	SharedControlSource         string `json:"shared_control_source,omitempty"`
+	SharedControlReviewState    string `json:"shared_control_review_state,omitempty"`
 }
 
 func New(cfg Config) (*Server, error) {

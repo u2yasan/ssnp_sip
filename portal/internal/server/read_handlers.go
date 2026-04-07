@@ -59,6 +59,8 @@ func (s *Server) handleAntiConcentrationEvidenceRead(w http.ResponseWriter, r *h
 		}
 		if evidence, ok := s.store.GetLatestOperatorGroupEvidenceForNodeAndDate(node.NodeID, dateUTC); ok {
 			view.OperatorGroupID = evidence.OperatorGroupID
+			view.OperatorGroupSource = evidence.Source
+			view.OperatorGroupReviewState = evidence.ReviewState
 		}
 		if evidence, ok := s.store.GetLatestDomainEvidenceForNodeAndDate(node.NodeID, dateUTC); ok {
 			view.RegistrableDomain = evidence.RegistrableDomain
@@ -66,6 +68,8 @@ func (s *Server) handleAntiConcentrationEvidenceRead(w http.ResponseWriter, r *h
 		if evidence, ok := s.store.GetLatestSharedControlPlaneEvidenceForNodeAndDate(node.NodeID, dateUTC); ok {
 			view.SharedControlPlaneID = evidence.ControlPlaneID
 			view.SharedControlClassification = evidence.Classification
+			view.SharedControlSource = evidence.Source
+			view.SharedControlReviewState = evidence.ReviewState
 		}
 		if view.OperatorGroupID == "" && view.RegistrableDomain == "" && view.SharedControlPlaneID == "" {
 			continue

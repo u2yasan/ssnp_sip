@@ -337,6 +337,17 @@ components:
           type: boolean
         source:
           type: string
+          enum:
+            - manual_review
+            - probe_derived
+            - operator_submitted
+        review_state:
+          type: string
+          enum:
+            - pending
+            - accepted
+            - rejected
+          default: accepted
     OperatorGroupEvidence:
       type: object
       additionalProperties: false
@@ -358,6 +369,17 @@ components:
           format: date-time
         source:
           type: string
+          enum:
+            - manual_review
+            - probe_derived
+            - operator_submitted
+        review_state:
+          type: string
+          enum:
+            - pending
+            - accepted
+            - rejected
+          default: accepted
     DecentralizationEvidence:
       type: object
       additionalProperties: false

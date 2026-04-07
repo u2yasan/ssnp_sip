@@ -76,6 +76,36 @@ func (s *Server) handleVotingKeyEvidence(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+func normalizeEvidenceSource(raw string) string {
+	return strings.TrimSpace(raw)
+}
+
+func normalizeReviewState(raw string) string {
+	reviewState := strings.ToLower(strings.TrimSpace(raw))
+	if reviewState == "" {
+		return "accepted"
+	}
+	return reviewState
+}
+
+func validEvidenceSource(source string) bool {
+	switch source {
+	case "manual_review", "probe_derived", "operator_submitted":
+		return true
+	default:
+		return false
+	}
+}
+
+func validReviewState(reviewState string) bool {
+	switch reviewState {
+	case "pending", "accepted", "rejected":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Server) handleOperatorGroupEvidence(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusBadRequest, "invalid_method", "invalid method")
@@ -90,9 +120,18 @@ func (s *Server) handleOperatorGroupEvidence(w http.ResponseWriter, r *http.Requ
 	evidenceRef := stringField(payload, "evidence_ref")
 	operatorGroupID := stringField(payload, "operator_group_id")
 	observedAt := stringField(payload, "observed_at")
-	source := stringField(payload, "source")
+	source := normalizeEvidenceSource(stringField(payload, "source"))
+	reviewState := normalizeReviewState(stringField(payload, "review_state"))
 	if nodeID == "" || evidenceRef == "" || operatorGroupID == "" || observedAt == "" || source == "" {
 		writeError(w, http.StatusBadRequest, "missing_required_field", "missing required field")
+		return
+	}
+	if !validEvidenceSource(source) {
+		writeError(w, http.StatusBadRequest, "invalid_source", "invalid source")
+		return
+	}
+	if !validReviewState(reviewState) {
+		writeError(w, http.StatusBadRequest, "invalid_review_state", "invalid review_state")
 		return
 	}
 	if _, ok := s.store.GetNode(nodeID); !ok {
@@ -109,6 +148,7 @@ func (s *Server) handleOperatorGroupEvidence(w http.ResponseWriter, r *http.Requ
 		OperatorGroupID: operatorGroupID,
 		ObservedAt:      observedAt,
 		Source:          source,
+		ReviewState:     reviewState,
 	}) {
 		writeError(w, http.StatusConflict, "duplicate_evidence_ref", "duplicate evidence_ref")
 		return
@@ -257,9 +297,18 @@ func (s *Server) handleSharedControlPlaneEvidence(w http.ResponseWriter, r *http
 	observedAt := stringField(payload, "observed_at")
 	controlPlaneID := strings.TrimSpace(stringField(payload, "control_plane_id"))
 	classification := strings.TrimSpace(stringField(payload, "classification"))
-	source := stringField(payload, "source")
+	source := normalizeEvidenceSource(stringField(payload, "source"))
+	reviewState := normalizeReviewState(stringField(payload, "review_state"))
 	if nodeID == "" || evidenceRef == "" || observedAt == "" || controlPlaneID == "" || classification == "" || source == "" {
 		writeError(w, http.StatusBadRequest, "missing_required_field", "missing required field")
+		return
+	}
+	if !validEvidenceSource(source) {
+		writeError(w, http.StatusBadRequest, "invalid_source", "invalid source")
+		return
+	}
+	if !validReviewState(reviewState) {
+		writeError(w, http.StatusBadRequest, "invalid_review_state", "invalid review_state")
 		return
 	}
 	switch classification {
@@ -283,6 +332,7 @@ func (s *Server) handleSharedControlPlaneEvidence(w http.ResponseWriter, r *http
 		ControlPlaneID: controlPlaneID,
 		Classification: classification,
 		Source:         source,
+		ReviewState:    reviewState,
 	}) {
 		writeError(w, http.StatusConflict, "duplicate_evidence_ref", "duplicate evidence_ref")
 		return

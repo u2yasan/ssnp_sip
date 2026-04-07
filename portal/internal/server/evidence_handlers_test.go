@@ -327,6 +327,39 @@ func TestVotingKeyEvidenceFlowEnablesQualified(t *testing.T) {
 	}
 }
 
+func TestAntiConcentrationEvidenceRejectsInvalidReviewStateAndSource(t *testing.T) {
+	srv := newTestServer(t)
+	handler := srv.Handler()
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	invalidReviewState := map[string]any{
+		"node_id":           "node-abc",
+		"evidence_ref":      "group-invalid-review",
+		"operator_group_id": "operator-1",
+		"observed_at":       now,
+		"source":            "manual_review",
+		"review_state":      "unknown",
+	}
+	rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/operator-group-evidence", invalidReviewState)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid review state status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+	}
+
+	invalidSource := map[string]any{
+		"node_id":          "node-abc",
+		"evidence_ref":     "cp-invalid-source",
+		"observed_at":      now,
+		"control_plane_id": "provider-x-ops",
+		"classification":   "managed_provider",
+		"source":           "spreadsheet",
+		"review_state":     "accepted",
+	}
+	rec = doJSONRequest(t, handler, http.MethodPost, "/api/v1/shared-control-plane-evidence", invalidSource)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid source status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestVotingKeyEvidenceInvalidAddsReason(t *testing.T) {
 	srv := newTestServer(t)
 	handler := srv.Handler()

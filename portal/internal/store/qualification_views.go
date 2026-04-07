@@ -192,6 +192,9 @@ func (s *Store) SaveOperatorGroupEvidence(evidence OperatorGroupEvidence) bool {
 	if _, exists := s.operatorGroups[evidence.EvidenceRef]; exists {
 		return false
 	}
+	if evidence.ReviewState == "" {
+		evidence.ReviewState = "accepted"
+	}
 	s.operatorGroups[evidence.EvidenceRef] = evidence
 	return true
 }
@@ -209,6 +212,9 @@ func (s *Store) GetLatestOperatorGroupEvidenceForNode(nodeID string) (OperatorGr
 			latest = evidence
 			found = true
 		}
+	}
+	if found && latest.ReviewState == "" {
+		latest.ReviewState = "accepted"
 	}
 	return latest, found
 }
@@ -229,6 +235,9 @@ func (s *Store) GetLatestOperatorGroupEvidenceForNodeAndDate(nodeID, dateUTC str
 			latest = evidence
 			found = true
 		}
+	}
+	if found && latest.ReviewState == "" {
+		latest.ReviewState = "accepted"
 	}
 	return latest, found
 }
@@ -346,6 +355,9 @@ func (s *Store) SaveSharedControlPlaneEvidence(evidence SharedControlPlaneEviden
 	if _, exists := s.controlPlane[evidence.EvidenceRef]; exists {
 		return false
 	}
+	if evidence.ReviewState == "" {
+		evidence.ReviewState = "accepted"
+	}
 	s.controlPlane[evidence.EvidenceRef] = evidence
 	return true
 }
@@ -366,6 +378,9 @@ func (s *Store) GetLatestSharedControlPlaneEvidenceForNodeAndDate(nodeID, dateUT
 			latest = evidence
 			found = true
 		}
+	}
+	if found && latest.ReviewState == "" {
+		latest.ReviewState = "accepted"
 	}
 	return latest, found
 }
