@@ -113,6 +113,66 @@ func TestLoadNodesConfigAndSnapshotRoundTrip(t *testing.T) {
 	if got, ok := reloaded.GetQualifiedDecisionRecord("node-abc", "2026-04-06"); !ok || got.NodeID != "node-abc" {
 		t.Fatal("expected qualified decision in store")
 	}
+	reloaded.SaveBasePerformanceRecord(BasePerformanceRecord{
+		NodeID:               "node-abc",
+		DateUTC:              "2026-04-06",
+		PolicyVersion:        "2026-04",
+		AvailabilityScore:    30,
+		FinalizationScore:    20,
+		ChainSyncScore:       10,
+		VotingKeyScore:       10,
+		BasePerformanceScore: 70,
+		QualifiedDecisionRef: "node-abc:2026-04-06",
+		DailySummaryRef:      "node-abc:2026-04-06",
+		ComputedAt:           "2026-04-06T10:03:30Z",
+	})
+	if got, ok := reloaded.GetBasePerformanceRecord("node-abc", "2026-04-06"); !ok || got.BasePerformanceScore != 70 {
+		t.Fatal("expected base performance record in store")
+	}
+	reloaded.ReplaceRankingRecordsForDate("2026-04-06", []RankingRecord{{
+		NodeID:                "node-abc",
+		DateUTC:               "2026-04-06",
+		PolicyVersion:         "2026-04",
+		RankPosition:          1,
+		AvailabilityScore:     30,
+		FinalizationScore:     20,
+		ChainSyncScore:        10,
+		VotingKeyScore:        10,
+		BasePerformanceScore:  70,
+		DecentralizationScore: 0,
+		TotalScore:            70,
+		OperatorGroupID:       "node-abc",
+		RewardEligible:        true,
+		ComputedAt:            "2026-04-06T10:03:45Z",
+	}})
+	if got := reloaded.ListRankingRecordsByDate("2026-04-06"); len(got) != 1 || got[0].NodeID != "node-abc" {
+		t.Fatalf("ranking records = %#v, want node-abc", got)
+	}
+	reloaded.ReplaceRewardEligibilityRecordsForDate("2026-04-06", []RewardEligibilityRecord{{
+		NodeID:          "node-abc",
+		DateUTC:         "2026-04-06",
+		PolicyVersion:   "2026-04",
+		RankPosition:    1,
+		Qualified:       true,
+		OperatorGroupID: "node-abc",
+		RewardEligible:  true,
+		DecidedAt:       "2026-04-06T10:04:00Z",
+	}})
+	if got := reloaded.ListRewardEligibilityRecordsByDate("2026-04-06"); len(got) != 1 || got[0].NodeID != "node-abc" {
+		t.Fatalf("reward eligibility = %#v, want node-abc", got)
+	}
+	if !reloaded.SaveOperatorGroupEvidence(OperatorGroupEvidence{
+		EvidenceRef:     "group-001",
+		NodeID:          "node-abc",
+		OperatorGroupID: "operator-1",
+		ObservedAt:      "2026-04-06T10:04:30Z",
+		Source:          "manual_review",
+	}) {
+		t.Fatal("expected operator group evidence save")
+	}
+	if got, ok := reloaded.GetLatestOperatorGroupEvidenceForNode("node-abc"); !ok || got.OperatorGroupID != "operator-1" {
+		t.Fatal("expected operator group evidence in store")
+	}
 	if !reloaded.SaveVotingKeyEvidence(VotingKeyEvidence{
 		EvidenceRef:            "vk-001",
 		NodeID:                 "node-abc",

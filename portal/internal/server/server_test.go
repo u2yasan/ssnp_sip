@@ -642,6 +642,366 @@ func TestVotingKeyEvidenceInvalidAddsReason(t *testing.T) {
 	}
 }
 
+func TestQualifiedNodeGeneratesBasePerformanceAndRanking(t *testing.T) {
+	srv := newTestServer(t)
+	handler := srv.Handler()
+	now := time.Now().UTC()
+	dateUTC := now.Format("2006-01-02")
+
+	node, _ := srv.store.GetNode("node-abc")
+	node.LastHeartbeatTimestamp = now.Format(time.RFC3339)
+	srv.store.SaveNode(node)
+	srv.store.SaveCheckEvent(store.CheckEvent{
+		EventID:       "check-ranking-001",
+		NodeID:        "node-abc",
+		OverallPassed: true,
+		CheckedAt:     now.Format(time.RFC3339),
+	})
+	for _, payload := range []map[string]any{
+		{
+			"schema_version":             "1",
+			"probe_id":                   "probe-ranking-1",
+			"node_id":                    "node-abc",
+			"region_id":                  "ap-sg-1",
+			"observed_at":                now.Format(time.RFC3339),
+			"endpoint":                   "https://node.example.net:3001",
+			"availability_up":            true,
+			"finalized_lag_blocks":       1,
+			"chain_lag_blocks":           2,
+			"source_height":              100,
+			"peer_height":                102,
+			"measurement_window_seconds": 30,
+		},
+		{
+			"schema_version":             "1",
+			"probe_id":                   "probe-ranking-2",
+			"node_id":                    "node-abc",
+			"region_id":                  "us-va-1",
+			"observed_at":                now.Add(5 * time.Second).Format(time.RFC3339),
+			"endpoint":                   "https://node.example.net:3001",
+			"availability_up":            true,
+			"finalized_lag_blocks":       2,
+			"chain_lag_blocks":           5,
+			"source_height":              101,
+			"peer_height":                103,
+			"measurement_window_seconds": 30,
+		},
+	} {
+		if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/probes/events", payload); rec.Code != http.StatusOK {
+			t.Fatalf("probe status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+		}
+	}
+	if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/voting-key-evidence", map[string]any{
+		"node_id":                    "node-abc",
+		"evidence_ref":               "vk-ranking-001",
+		"observed_at":                now.Add(10 * time.Second).Format(time.RFC3339),
+		"current_epoch":              12,
+		"voting_key_present":         true,
+		"voting_key_valid_for_epoch": true,
+		"source":                     "external_probe",
+	}); rec.Code != http.StatusOK {
+		t.Fatalf("voting key evidence status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	record, ok := srv.store.GetBasePerformanceRecord("node-abc", dateUTC)
+	if !ok {
+		t.Fatal("expected base performance record")
+	}
+	if record.BasePerformanceScore != 70 {
+		t.Fatalf("base performance = %#v, want score 70", record)
+	}
+	rankings := srv.store.ListRankingRecordsByDate(dateUTC)
+	if len(rankings) != 1 {
+		t.Fatalf("ranking count = %d, want 1", len(rankings))
+	}
+	if rankings[0].NodeID != "node-abc" || rankings[0].RankPosition != 1 || rankings[0].TotalScore != 70 {
+		t.Fatalf("ranking = %#v, want node-abc rank 1 score 70", rankings[0])
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rankings/"+dateUTC, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ranking read status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		DateUTC string                `json:"date_utc"`
+		Items   []store.RankingRecord `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if payload.DateUTC != dateUTC || len(payload.Items) != 1 || payload.Items[0].NodeID != "node-abc" {
+		t.Fatalf("payload = %#v, want ranking payload for node-abc", payload)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/reward-eligibility/"+dateUTC, nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reward eligibility read status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var rewardPayload struct {
+		DateUTC string                          `json:"date_utc"`
+		Items   []store.RewardEligibilityRecord `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &rewardPayload); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if rewardPayload.DateUTC != dateUTC || len(rewardPayload.Items) != 1 || !rewardPayload.Items[0].RewardEligible {
+		t.Fatalf("reward payload = %#v, want eligible node-abc", rewardPayload)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/public-node-status/"+dateUTC, nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("public node status read status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var publicPayload struct {
+		DateUTC string           `json:"date_utc"`
+		Items   []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &publicPayload); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if publicPayload.DateUTC != dateUTC || len(publicPayload.Items) != 1 {
+		t.Fatalf("public payload = %#v, want one item", publicPayload)
+	}
+	if _, ok := publicPayload.Items[0]["failure_reasons"]; ok {
+		t.Fatalf("public payload leaked failure_reasons: %#v", publicPayload.Items[0])
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/operator-node-status/node-abc/"+dateUTC, nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("operator node status read status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var operatorPayload struct {
+		NodeID         string   `json:"node_id"`
+		DateUTC        string   `json:"date_utc"`
+		Qualified      bool     `json:"qualified"`
+		RewardEligible bool     `json:"reward_eligible"`
+		FailureReasons []string `json:"failure_reasons"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &operatorPayload); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if operatorPayload.NodeID != "node-abc" || operatorPayload.DateUTC != dateUTC || !operatorPayload.Qualified || !operatorPayload.RewardEligible {
+		t.Fatalf("operator payload = %#v, want qualified eligible node-abc", operatorPayload)
+	}
+}
+
+func TestRankingOrdersQualifiedNodesDeterministically(t *testing.T) {
+	dir := t.TempDir()
+	nodesPath := filepath.Join(dir, "nodes.yaml")
+	if err := os.WriteFile(nodesPath, []byte(`nodes:
+  - node_id: "node-abc"
+    display_name: "Node ABC"
+    operator_email: "ops@example.invalid"
+    enabled: true
+  - node_id: "node-def"
+    display_name: "Node DEF"
+    operator_email: "ops@example.invalid"
+    enabled: true
+`), 0o600); err != nil {
+		t.Fatalf("WriteFile(nodes) error = %v", err)
+	}
+	srv, err := New(Config{
+		ListenAddr:              "127.0.0.1:8080",
+		PolicyPath:              testPolicyPath(),
+		NodesConfigPath:         nodesPath,
+		StatePath:               filepath.Join(dir, "portal-state.json"),
+		AllowedClockSkewSeconds: 300,
+		NotificationEmailTo:     "ops@example.invalid",
+		Notifier:                &notifier.Recorder{},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	handler := srv.Handler()
+	now := time.Now().UTC()
+	dateUTC := now.Format("2006-01-02")
+	for _, nodeID := range []string{"node-abc", "node-def"} {
+		node, _ := srv.store.GetNode(nodeID)
+		node.LastHeartbeatTimestamp = now.Format(time.RFC3339)
+		srv.store.SaveNode(node)
+		srv.store.SaveCheckEvent(store.CheckEvent{
+			EventID:       "check-" + nodeID,
+			NodeID:        nodeID,
+			OverallPassed: true,
+			CheckedAt:     now.Format(time.RFC3339),
+		})
+	}
+	probes := []map[string]any{
+		{
+			"schema_version":             "1",
+			"probe_id":                   "probe-abc-1",
+			"node_id":                    "node-abc",
+			"region_id":                  "ap-sg-1",
+			"observed_at":                now.Format(time.RFC3339),
+			"endpoint":                   "https://node-abc.example.net:3001",
+			"availability_up":            true,
+			"finalized_lag_blocks":       1,
+			"chain_lag_blocks":           2,
+			"source_height":              100,
+			"peer_height":                102,
+			"measurement_window_seconds": 30,
+		},
+		{
+			"schema_version":             "1",
+			"probe_id":                   "probe-abc-2",
+			"node_id":                    "node-abc",
+			"region_id":                  "us-va-1",
+			"observed_at":                now.Add(5 * time.Second).Format(time.RFC3339),
+			"endpoint":                   "https://node-abc.example.net:3001",
+			"availability_up":            true,
+			"finalized_lag_blocks":       2,
+			"chain_lag_blocks":           5,
+			"source_height":              101,
+			"peer_height":                103,
+			"measurement_window_seconds": 30,
+		},
+		{
+			"schema_version":             "1",
+			"probe_id":                   "probe-def-1",
+			"node_id":                    "node-def",
+			"region_id":                  "ap-sg-1",
+			"observed_at":                now.Format(time.RFC3339),
+			"endpoint":                   "https://node-def.example.net:3001",
+			"availability_up":            true,
+			"finalized_lag_blocks":       2,
+			"chain_lag_blocks":           5,
+			"source_height":              100,
+			"peer_height":                102,
+			"measurement_window_seconds": 30,
+		},
+		{
+			"schema_version":             "1",
+			"probe_id":                   "probe-def-2",
+			"node_id":                    "node-def",
+			"region_id":                  "us-va-1",
+			"observed_at":                now.Add(5 * time.Second).Format(time.RFC3339),
+			"endpoint":                   "https://node-def.example.net:3001",
+			"availability_up":            true,
+			"finalized_lag_blocks":       2,
+			"chain_lag_blocks":           5,
+			"source_height":              101,
+			"peer_height":                103,
+			"measurement_window_seconds": 30,
+		},
+	}
+	for _, probe := range probes {
+		if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/probes/events", probe); rec.Code != http.StatusOK {
+			t.Fatalf("probe status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+		}
+	}
+	for _, evidence := range []map[string]any{
+		{
+			"node_id":                    "node-abc",
+			"evidence_ref":               "vk-abc",
+			"observed_at":                now.Add(10 * time.Second).Format(time.RFC3339),
+			"current_epoch":              12,
+			"voting_key_present":         true,
+			"voting_key_valid_for_epoch": true,
+			"source":                     "external_probe",
+		},
+		{
+			"node_id":                    "node-def",
+			"evidence_ref":               "vk-def",
+			"observed_at":                now.Add(10 * time.Second).Format(time.RFC3339),
+			"current_epoch":              12,
+			"voting_key_present":         true,
+			"voting_key_valid_for_epoch": true,
+			"source":                     "external_probe",
+		},
+	} {
+		if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/voting-key-evidence", evidence); rec.Code != http.StatusOK {
+			t.Fatalf("voting key evidence status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+		}
+	}
+
+	rankings := srv.store.ListRankingRecordsByDate(dateUTC)
+	if len(rankings) != 2 {
+		t.Fatalf("ranking count = %d, want 2", len(rankings))
+	}
+	if rankings[0].NodeID != "node-abc" || rankings[0].RankPosition != 1 {
+		t.Fatalf("rankings[0] = %#v, want node-abc rank 1", rankings[0])
+	}
+	if rankings[1].NodeID != "node-def" || rankings[1].RankPosition != 2 {
+		t.Fatalf("rankings[1] = %#v, want node-def rank 2", rankings[1])
+	}
+	if rankings[0].TotalScore != rankings[1].TotalScore {
+		t.Fatalf("scores = %#v, want tied scores for deterministic fallback", rankings)
+	}
+	for _, evidence := range []map[string]any{
+		{
+			"node_id":           "node-abc",
+			"evidence_ref":      "group-abc",
+			"operator_group_id": "operator-1",
+			"observed_at":       now.Add(15 * time.Second).Format(time.RFC3339),
+			"source":            "manual_review",
+		},
+		{
+			"node_id":           "node-def",
+			"evidence_ref":      "group-def",
+			"operator_group_id": "operator-1",
+			"observed_at":       now.Add(15 * time.Second).Format(time.RFC3339),
+			"source":            "manual_review",
+		},
+	} {
+		if rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/operator-group-evidence", evidence); rec.Code != http.StatusOK {
+			t.Fatalf("operator group evidence status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+		}
+	}
+	reward := srv.store.ListRewardEligibilityRecordsByDate(dateUTC)
+	if len(reward) != 2 {
+		t.Fatalf("reward eligibility = %#v, want two records", reward)
+	}
+	if !reward[0].RewardEligible || reward[0].OperatorGroupID != "operator-1" {
+		t.Fatalf("reward[0] = %#v, want top ranked node eligible in operator-1", reward[0])
+	}
+	if reward[1].RewardEligible || reward[1].ExclusionReason != "same_operator_group_lower_ranked" {
+		t.Fatalf("reward[1] = %#v, want lower ranked node excluded", reward[1])
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/public-node-status/"+dateUTC, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("public node status read status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var publicPayload struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &publicPayload); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if len(publicPayload.Items) != 2 {
+		t.Fatalf("public payload = %#v, want two items", publicPayload)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/operator-node-status/node-def/"+dateUTC, nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("operator node status read status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var operatorPayload struct {
+		NodeID          string   `json:"node_id"`
+		RewardEligible  bool     `json:"reward_eligible"`
+		ExclusionReason string   `json:"exclusion_reason"`
+		FailureReasons  []string `json:"failure_reasons"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &operatorPayload); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if operatorPayload.NodeID != "node-def" || operatorPayload.RewardEligible || operatorPayload.ExclusionReason != "same_operator_group_lower_ranked" {
+		t.Fatalf("operator payload = %#v, want excluded node-def", operatorPayload)
+	}
+}
+
 func TestTelemetryNotificationCooldownAndDeliveryFailure(t *testing.T) {
 	recorder := &notifier.Recorder{}
 	srv := newTestServerWithNotifier(t, recorder)
