@@ -14,7 +14,6 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -878,12 +877,17 @@ func TestAgentRunEmitsCertificateExpiryRiskWhenTLSCertNearExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("X509KeyPair() error = %v", err)
 	}
-	tlsServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	listener, err := tls.Listen("tcp4", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{cert}})
+	if err != nil {
+		t.Skipf("sandbox does not allow local TLS listener: %v", err)
+	}
+	tlsServer := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-	}))
-	tlsServer.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
-	tlsServer.StartTLS()
-	defer tlsServer.Close()
+	})}
+	go func() {
+		_ = tlsServer.Serve(listener)
+	}()
+	defer tlsServer.Shutdown(context.Background())
 
 	var telemetryCalls int
 	httpClient := &http.Client{
@@ -916,7 +920,7 @@ func TestAgentRunEmitsCertificateExpiryRiskWhenTLSCertNearExpiry(t *testing.T) {
 		PortalBaseURL:             "http://mock.portal",
 		AgentKeyPath:              privateKeyPath,
 		AgentPublicKeyPath:        publicKeyPath,
-		MonitoredEndpoint:         tlsServer.URL,
+		MonitoredEndpoint:         "https://" + listener.Addr().String(),
 		StatePath:                 filepath.Join(tempDir, "state.json"),
 		TempDir:                   tempDir,
 		RequestTimeoutSeconds:     5,

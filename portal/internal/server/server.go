@@ -20,7 +20,13 @@ import (
 const (
 	alertHeartbeatStale             = "heartbeat_stale"
 	alertHeartbeatFailed            = "heartbeat_failed"
+	alertNodeOutage                 = "node_outage"
+	alertFinalizedLag               = "finalized_lag"
 	operationalEventDeliveryFailure = "notification_delivery_failed"
+	defaultEnrollmentChallengeTTL   = 10 * time.Minute
+	observationWindow               = 72 * time.Hour
+	healthyHeartbeatWindow          = 15 * time.Minute
+	failedHeartbeatWindow           = 30 * time.Minute
 )
 
 type Config struct {
@@ -38,6 +44,7 @@ type Config struct {
 	HeartbeatStaleAfter     time.Duration
 	HeartbeatFailedAfter    time.Duration
 	AlertScanInterval       time.Duration
+	EnrollmentChallengeTTL  time.Duration
 	Notifier                notifier.Notifier
 }
 
@@ -101,6 +108,9 @@ func New(cfg Config) (*Server, error) {
 	if cfg.AlertScanInterval <= 0 {
 		cfg.AlertScanInterval = time.Minute
 	}
+	if cfg.EnrollmentChallengeTTL <= 0 {
+		cfg.EnrollmentChallengeTTL = defaultEnrollmentChallengeTTL
+	}
 	if cfg.Notifier == nil {
 		if strings.TrimSpace(cfg.NotificationEmailTo) == "" {
 			return nil, errors.New("missing fallback notification email")
@@ -142,6 +152,7 @@ func New(cfg Config) (*Server, error) {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/agent/policy", s.handlePolicy)
+	mux.HandleFunc("/api/v1/agent/enrollment-challenges", s.handleEnrollmentChallenge)
 	mux.HandleFunc("/api/v1/agent/enroll", s.handleEnroll)
 	mux.HandleFunc("/api/v1/agent/heartbeat", s.handleHeartbeat)
 	mux.HandleFunc("/api/v1/agent/checks", s.handleChecks)
@@ -197,6 +208,45 @@ func (s *Server) handlePolicy(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.policy)
 }
 
+func (s *Server) handleEnrollmentChallenge(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusBadRequest, "invalid_method", "invalid method")
+		return
+	}
+	payload, err := decodeObject(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	nodeID := stringField(payload, "node_id")
+	if nodeID == "" {
+		writeError(w, http.StatusBadRequest, "missing_node_id", "missing node_id")
+		return
+	}
+	if _, ok := s.store.GetNode(nodeID); !ok {
+		writeError(w, http.StatusNotFound, "unknown_node", "unknown node")
+		return
+	}
+	issuedAt := time.Now().UTC()
+	challenge := store.EnrollmentChallenge{
+		ChallengeID: fmt.Sprintf("%s-%d", nodeID, issuedAt.UnixNano()),
+		NodeID:      nodeID,
+		IssuedAt:    issuedAt.Format(time.RFC3339),
+		ExpiresAt:   issuedAt.Add(s.cfg.EnrollmentChallengeTTL).Format(time.RFC3339),
+	}
+	s.store.SaveEnrollmentChallenge(challenge)
+	if err := s.persist(); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_persist_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":       "ok",
+		"challenge_id": challenge.ChallengeID,
+		"node_id":      challenge.NodeID,
+		"expires_at":   challenge.ExpiresAt,
+	})
+}
+
 func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusBadRequest, "invalid_method", "invalid method")
@@ -218,6 +268,24 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	node, ok := s.store.GetNode(nodeID)
 	if !ok {
 		writeError(w, http.StatusNotFound, "unknown_node", "unknown node")
+		return
+	}
+	challenge, ok := s.store.GetEnrollmentChallenge(challengeID)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "invalid_enrollment_challenge", "invalid enrollment challenge")
+		return
+	}
+	if challenge.NodeID != nodeID {
+		writeError(w, http.StatusUnauthorized, "invalid_enrollment_challenge", "enrollment challenge does not match node")
+		return
+	}
+	if strings.TrimSpace(challenge.UsedAt) != "" {
+		writeError(w, http.StatusConflict, "enrollment_challenge_used", "enrollment challenge already used")
+		return
+	}
+	expiresAt, err := time.Parse(time.RFC3339, challenge.ExpiresAt)
+	if err != nil || !time.Now().UTC().Before(expiresAt) {
+		writeError(w, http.StatusUnauthorized, "enrollment_challenge_expired", "enrollment challenge expired")
 		return
 	}
 	fingerprint, err := verify.FingerprintFromHexPublicKey(publicKey)
@@ -243,6 +311,7 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	node.LastPolicyVersion = s.policy.PolicyVersion
 	node.LastHeartbeatSequence = 0
 	s.store.SaveNode(node)
+	s.store.ConsumeEnrollmentChallenge(challengeID, time.Now().UTC().Format(time.RFC3339))
 	if err := s.persist(); err != nil {
 		writeError(w, http.StatusInternalServerError, "state_persist_failed", err.Error())
 		return
@@ -281,6 +350,10 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 	if node.AgentPublicKey == "" || payload.AgentKeyFingerprint != node.ActiveAgentKeyFingerprint {
 		writeError(w, http.StatusUnauthorized, "unknown_fingerprint", "unknown fingerprint")
+		return
+	}
+	if payload.EnrollmentGeneration != node.EnrollmentGeneration {
+		writeError(w, http.StatusConflict, "enrollment_generation_mismatch", "enrollment generation mismatch")
 		return
 	}
 	if err := s.validateTimestamp(payload.HeartbeatTimestamp); err != nil {
@@ -346,6 +419,10 @@ func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "policy_version_mismatch", "policy version mismatch")
 		return
 	}
+	if stringField(payload, "schema_version") != "1" {
+		writeError(w, http.StatusBadRequest, "invalid_schema_version", "invalid schema_version")
+		return
+	}
 	if stringField(payload, "cpu_profile_id") != s.policy.CPUProfile.ID {
 		writeError(w, http.StatusConflict, "cpu_profile_mismatch", "cpu profile mismatch")
 		return
@@ -359,9 +436,47 @@ func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing_field", "missing event_id")
 		return
 	}
+	eventType := stringField(payload, "event_type")
+	switch eventType {
+	case "registration", "voting_key_renewal", "recheck":
+	default:
+		writeError(w, http.StatusBadRequest, "invalid_event_type", "invalid event_type")
+		return
+	}
+	if err := s.validateTimestamp(stringField(payload, "checked_at")); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_timestamp", err.Error())
+		return
+	}
+	boolKeys := []string{
+		"cpu_check_passed",
+		"disk_check_passed",
+		"ram_check_passed",
+		"storage_size_check_passed",
+		"ssd_check_passed",
+		"cpu_load_test_passed",
+	}
+	subChecks := make(map[string]bool, len(boolKeys))
+	for _, key := range boolKeys {
+		value, ok := payload[key].(bool)
+		if !ok {
+			writeError(w, http.StatusBadRequest, "missing_field", "missing "+key)
+			return
+		}
+		subChecks[key] = value
+	}
 	overall, ok := payload["overall_passed"].(bool)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "missing_field", "missing overall_passed")
+		return
+	}
+	expectedOverall := subChecks["cpu_check_passed"] &&
+		subChecks["disk_check_passed"] &&
+		subChecks["ram_check_passed"] &&
+		subChecks["storage_size_check_passed"] &&
+		subChecks["ssd_check_passed"] &&
+		subChecks["cpu_load_test_passed"]
+	if overall != expectedOverall {
+		writeError(w, http.StatusBadRequest, "invalid_overall_passed", "overall_passed does not match sub-checks")
 		return
 	}
 	if !s.store.SaveCheckEvent(store.CheckEvent{
@@ -990,6 +1105,32 @@ func datePart(timestamp string) (string, error) {
 	return ts.UTC().Format("2006-01-02"), nil
 }
 
+func evaluationAnchor(dateUTC string) time.Time {
+	endOfDay, err := time.Parse(time.RFC3339, dateUTC+"T23:59:59Z")
+	if err != nil {
+		return time.Now().UTC()
+	}
+	now := time.Now().UTC()
+	if now.Before(endOfDay) {
+		return now
+	}
+	return endOfDay
+}
+
+func countHeartbeatsWithinWindow(events []store.HeartbeatEvent, anchor time.Time, window time.Duration) int {
+	count := 0
+	for _, event := range events {
+		ts, err := time.Parse(time.RFC3339, event.HeartbeatTimestamp)
+		if err != nil || ts.After(anchor) {
+			continue
+		}
+		if anchor.Sub(ts) <= window {
+			count++
+		}
+	}
+	return count
+}
+
 func (s *Server) updateQualificationArtifacts(nodeID, dateUTC string) {
 	summary := s.computeDailyQualificationSummary(nodeID, dateUTC)
 	s.store.SaveDailyQualificationSummary(summary)
@@ -1001,6 +1142,13 @@ func (s *Server) updateQualificationArtifacts(nodeID, dateUTC string) {
 		s.store.DeleteBasePerformanceRecord(nodeID, dateUTC)
 	}
 	s.rebuildRankings(dateUTC)
+	now := time.Now().UTC()
+	if summary.ValidProbeCount > 0 && !summary.AvailabilityPassed {
+		_ = s.maybeNotifyAlert(context.Background(), nodeID, alertNodeOutage, now.Format(time.RFC3339), now)
+	}
+	if summary.FinalizedLagMeasurableCount > 0 && !summary.FinalizedLagPassed {
+		_ = s.maybeNotifyAlert(context.Background(), nodeID, alertFinalizedLag, now.Format(time.RFC3339), now)
+	}
 }
 
 func (s *Server) computeQualifiedDecisionRecord(nodeID string, summary store.DailyQualificationSummary) store.QualifiedDecisionRecord {
@@ -1016,17 +1164,17 @@ func (s *Server) computeQualifiedDecisionRecord(nodeID string, summary store.Dai
 		}
 	}
 
-	heartbeatPassed := false
-	if _, ok := s.store.LatestHeartbeatEventForNodeAndDate(nodeID, summary.DateUTC); ok {
-		heartbeatPassed = true
-	} else if strings.TrimSpace(node.LastHeartbeatTimestamp) == "" {
-		failureReasons = append(failureReasons, "heartbeat_missing")
-	} else {
-		lastSeen, err := time.Parse(time.RFC3339, node.LastHeartbeatTimestamp)
-		if err != nil || lastSeen.UTC().Format("2006-01-02") != summary.DateUTC {
+	anchor := evaluationAnchor(summary.DateUTC)
+	heartbeatEvents := s.store.ListHeartbeatEventsByNode(nodeID)
+	healthyHeartbeatCount := countHeartbeatsWithinWindow(heartbeatEvents, anchor, healthyHeartbeatWindow)
+	staleHeartbeatCount := countHeartbeatsWithinWindow(heartbeatEvents, anchor, failedHeartbeatWindow)
+	heartbeatPassed := healthyHeartbeatCount >= 2
+	if !heartbeatPassed {
+		switch {
+		case staleHeartbeatCount > 0:
+			failureReasons = append(failureReasons, "heartbeat_stale")
+		default:
 			failureReasons = append(failureReasons, "heartbeat_missing")
-		} else {
-			heartbeatPassed = true
 		}
 	}
 
@@ -1052,6 +1200,14 @@ func (s *Server) computeQualifiedDecisionRecord(nodeID string, summary store.Dai
 		votingKeyPassed = true
 	}
 
+	observationWindowPassed := false
+	registrationTime, ok := parseRFC3339(node.ValidatedRegistrationAt)
+	if ok && !anchor.Before(registrationTime.Add(observationWindow)) {
+		observationWindowPassed = true
+	} else {
+		failureReasons = append(failureReasons, "observation_window_incomplete")
+	}
+
 	return store.QualifiedDecisionRecord{
 		NodeID:                     nodeID,
 		DateUTC:                    summary.DateUTC,
@@ -1060,7 +1216,7 @@ func (s *Server) computeQualifiedDecisionRecord(nodeID string, summary store.Dai
 		HeartbeatPassed:            heartbeatPassed,
 		HardwarePassed:             hardwarePassed,
 		VotingKeyPassed:            votingKeyPassed,
-		Qualified:                  probeEvidencePassed && heartbeatPassed && hardwarePassed && votingKeyPassed,
+		Qualified:                  probeEvidencePassed && heartbeatPassed && hardwarePassed && votingKeyPassed && observationWindowPassed,
 		FailureReasons:             failureReasons,
 		InsufficientEvidenceReason: summary.InsufficientEvidenceReason,
 		DecidedAt:                  time.Now().UTC().Format(time.RFC3339),
@@ -1425,8 +1581,10 @@ func (s *Server) recordDeliveryFailure(nodeID, alertCode string, severity notifi
 
 func severityForAlert(alertCode string) notifier.Severity {
 	switch alertCode {
-	case alertHeartbeatStale, alertHeartbeatFailed:
+	case alertHeartbeatFailed, alertNodeOutage, alertFinalizedLag:
 		return notifier.SeverityCritical
+	case alertHeartbeatStale:
+		return notifier.SeverityWarning
 	default:
 		return notifier.SeverityWarning
 	}
@@ -1445,6 +1603,10 @@ func notificationMessage(alertCode string) string {
 		return "Program Agent heartbeat is stale"
 	case alertHeartbeatFailed:
 		return "Program Agent heartbeat is failed"
+	case alertNodeOutage:
+		return "Node availability is below the qualification threshold"
+	case alertFinalizedLag:
+		return "Finalized lag is above the qualification threshold"
 	case "portal_unreachable":
 		return "Program Agent cannot reach portal"
 	case "voting_key_expiry_risk":

@@ -36,6 +36,7 @@ const (
 	portalFailureThreshold       = 3
 	votingKeyRiskWindow          = 14 * 24 * time.Hour
 	certificateRiskWindow        = 14 * 24 * time.Hour
+	maxHeartbeatAttempts         = 3
 )
 
 type Agent struct {
@@ -103,13 +104,6 @@ func (a *Agent) Run(ctx context.Context) error {
 	if err := state.Save(a.cfg.StatePath, st); err != nil {
 		return err
 	}
-	if err := a.maybeEmitVotingKeyExpiryRisk(ctx, pol.PolicyVersion); err != nil {
-		logger.Log("error", "runtime", "telemetry_submit_failed", a.cfg.NodeID, map[string]any{"error": err.Error(), "warning_flag": warningVotingKeyExpiryRisk})
-	}
-	if err := a.maybeEmitCertificateExpiryRisk(ctx, pol.PolicyVersion); err != nil {
-		logger.Log("error", "runtime", "telemetry_submit_failed", a.cfg.NodeID, map[string]any{"error": err.Error(), "warning_flag": warningCertificateExpiryRisk})
-	}
-
 	jitter := time.Duration(rand.Intn(a.cfg.HeartbeatJitterSecondsMax+1)) * time.Second
 	if jitter > 0 {
 		time.Sleep(jitter)
@@ -119,7 +113,10 @@ func (a *Agent) Run(ctx context.Context) error {
 	defer ticker.Stop()
 
 	for {
-		if err := a.sendHeartbeat(ctx); err != nil {
+		if err := a.runRecurringChecks(ctx, pol.PolicyVersion); err != nil {
+			logger.Log("error", "runtime", "recurring_checks_failed", a.cfg.NodeID, map[string]any{"error": err.Error()})
+		}
+		if err := a.sendHeartbeatWithRetry(ctx); err != nil {
 			if stateErr := a.recordPortalFailure(); stateErr != nil {
 				logger.Log("error", "runtime", "state_save_failed", a.cfg.NodeID, map[string]any{"error": stateErr.Error()})
 			}
@@ -135,6 +132,16 @@ func (a *Agent) Run(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+func (a *Agent) runRecurringChecks(ctx context.Context, policyVersion string) error {
+	if err := a.maybeEmitVotingKeyExpiryRisk(ctx, policyVersion); err != nil {
+		return err
+	}
+	if err := a.maybeEmitCertificateExpiryRisk(ctx, policyVersion); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (a *Agent) Enroll(ctx context.Context, challengeID string) error {
@@ -270,13 +277,14 @@ func (a *Agent) sendHeartbeat(ctx context.Context) error {
 		return errors.New("state fingerprint mismatch")
 	}
 
+	flags := a.collectLocalObservationFlags(ctx)
 	payload := heartbeat.New(
 		a.cfg.NodeID,
 		a.fingerprint,
 		a.cfg.AgentVersion,
 		a.cfg.EnrollmentGeneration,
 		st.SequenceNumber+1,
-		[]string{},
+		flags,
 	)
 	canonical, err := payload.CanonicalBytes()
 	if err != nil {
@@ -291,6 +299,30 @@ func (a *Agent) sendHeartbeat(ctx context.Context) error {
 	st.SequenceNumber++
 	st.AgentKeyFingerprint = a.fingerprint
 	return state.Save(a.cfg.StatePath, st)
+}
+
+func (a *Agent) sendHeartbeatWithRetry(ctx context.Context) error {
+	var lastErr error
+	backoff := time.Second
+	for attempt := 1; attempt <= maxHeartbeatAttempts; attempt++ {
+		if err := a.sendHeartbeat(ctx); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if attempt == maxHeartbeatAttempts {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+		if backoff < 4*time.Second {
+			backoff *= 2
+		}
+	}
+	return lastErr
 }
 
 func signMap(privateKey ed25519.PrivateKey, payload map[string]any) (string, error) {
@@ -381,6 +413,36 @@ func (a *Agent) maybeEmitVotingKeyExpiryRisk(ctx context.Context, policyVersion 
 		return nil
 	}
 	return a.markWarning(ctx, policyVersion, warningVotingKeyExpiryRisk)
+}
+
+func (a *Agent) collectLocalObservationFlags(ctx context.Context) []string {
+	flags := []string{}
+	status, err := a.symbolClient.HasVotingKeyExpiryRisk(ctx, votingKeyRiskWindow)
+	switch {
+	case err != nil:
+		flags = append(flags, "local_api_unreachable")
+	case status.NearExpiry:
+		flags = append(flags, warningVotingKeyExpiryRisk)
+	}
+
+	endpoint := strings.TrimSpace(a.cfg.MonitoredEndpoint)
+	if endpoint != "" {
+		parsed, err := url.Parse(endpoint)
+		if err == nil && parsed.Scheme == "https" {
+			notAfter, ok := fetchLeafCertificateNotAfter(parsed)
+			if ok && time.Until(notAfter) < certificateRiskWindow {
+				flags = append(flags, warningCertificateExpiryRisk)
+			}
+		}
+	}
+
+	st, err := state.Load(a.cfg.StatePath)
+	if err == nil {
+		if st.PendingWarnings[warningPortalUnreachable] || st.ActiveWarnings[warningPortalUnreachable] {
+			flags = append(flags, warningPortalUnreachable)
+		}
+	}
+	return flags
 }
 
 func (a *Agent) maybeEmitCertificateExpiryRisk(ctx context.Context, policyVersion string) error {

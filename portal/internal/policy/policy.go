@@ -1,6 +1,8 @@
 package policy
 
 import (
+	"fmt"
+	"math"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -95,17 +97,54 @@ func validate(doc Document) error {
 	if doc.CPUProfile.ID == "" || doc.DiskProfile.ID == "" {
 		return errInvalidPolicy("missing profile id")
 	}
+	if doc.CPUProfile.DurationSeconds <= 0 || doc.CPUProfile.WarmupSeconds <= 0 || doc.CPUProfile.MeasuredSeconds <= 0 || doc.CPUProfile.CooldownSeconds <= 0 {
+		return errInvalidPolicy("cpu_profile durations must be positive")
+	}
+	if doc.CPUProfile.WorkerCap <= 0 {
+		return errInvalidPolicy("cpu_profile.worker_cap must be positive")
+	}
+	if !approximatelyEqual(doc.CPUProfile.WorkloadMix.Hashing+doc.CPUProfile.WorkloadMix.Integer+doc.CPUProfile.WorkloadMix.Matrix, 1.0) {
+		return errInvalidPolicy("cpu_profile.workload_mix must sum to 1.0")
+	}
+	if doc.CPUProfile.AcceptanceFloor.Type == "" {
+		return errInvalidPolicy("missing cpu_profile.acceptance_floor.type")
+	}
+	if doc.DiskProfile.DurationSeconds <= 0 || doc.DiskProfile.WarmupSeconds <= 0 || doc.DiskProfile.MeasuredSeconds <= 0 || doc.DiskProfile.CooldownSeconds <= 0 {
+		return errInvalidPolicy("disk_profile durations must be positive")
+	}
+	if doc.DiskProfile.BlockSizeBytes <= 0 || doc.DiskProfile.QueueDepth <= 0 || doc.DiskProfile.Concurrency <= 0 {
+		return errInvalidPolicy("disk_profile performance parameters must be positive")
+	}
+	if !approximatelyEqual(doc.DiskProfile.ReadRatio+doc.DiskProfile.WriteRatio, 1.0) {
+		return errInvalidPolicy("disk_profile read/write ratios must sum to 1.0")
+	}
+	if doc.DiskProfile.AcceptanceFloor.Type == "" {
+		return errInvalidPolicy("missing disk_profile.acceptance_floor.type")
+	}
+	if doc.HardwareThresholds.CPUCoresMin <= 0 || doc.HardwareThresholds.RAMGBMin <= 0 || doc.HardwareThresholds.StorageGBMin <= 0 {
+		return errInvalidPolicy("hardware thresholds must be positive")
+	}
 	if doc.ProbeThresholds.FinalizedLagMaxBlocks <= 0 {
 		return errInvalidPolicy("probe_thresholds.finalized_lag_max_blocks must be positive")
 	}
 	if doc.ProbeThresholds.ChainLagMaxBlocks <= 0 {
 		return errInvalidPolicy("probe_thresholds.chain_lag_max_blocks must be positive")
 	}
+	if doc.ReferenceEnvironment.ID == "" || doc.ReferenceEnvironment.OSImageID == "" || doc.ReferenceEnvironment.AgentVersion == "" || doc.ReferenceEnvironment.CPUProfileID == "" || doc.ReferenceEnvironment.DiskProfileID == "" || doc.ReferenceEnvironment.BaselineSourceDate == "" {
+		return errInvalidPolicy("missing reference_environment fields")
+	}
+	if doc.ReferenceEnvironment.CPUProfileID != doc.CPUProfile.ID || doc.ReferenceEnvironment.DiskProfileID != doc.DiskProfile.ID {
+		return errInvalidPolicy("reference_environment profile ids must match active profiles")
+	}
 	return nil
+}
+
+func approximatelyEqual(left, right float64) bool {
+	return math.Abs(left-right) <= 1e-9
 }
 
 type errInvalidPolicy string
 
 func (e errInvalidPolicy) Error() string {
-	return string(e)
+	return fmt.Sprintf("invalid policy: %s", string(e))
 }

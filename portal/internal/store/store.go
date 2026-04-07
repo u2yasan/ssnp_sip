@@ -26,6 +26,14 @@ type Node struct {
 	LastPolicyVersion         string `json:"last_policy_version,omitempty"`
 }
 
+type EnrollmentChallenge struct {
+	ChallengeID string `json:"challenge_id"`
+	NodeID      string `json:"node_id"`
+	IssuedAt    string `json:"issued_at"`
+	ExpiresAt   string `json:"expires_at"`
+	UsedAt      string `json:"used_at,omitempty"`
+}
+
 type CheckEvent struct {
 	EventID       string `json:"event_id"`
 	NodeID        string `json:"node_id"`
@@ -205,6 +213,7 @@ type NodesConfig struct {
 
 type snapshot struct {
 	Nodes                  []Node                      `json:"nodes"`
+	EnrollmentChallenges   []EnrollmentChallenge       `json:"enrollment_challenges"`
 	CheckEvents            []CheckEvent                `json:"check_events"`
 	HeartbeatEvents        []HeartbeatEvent            `json:"heartbeat_events"`
 	TelemetryEvents        []TelemetryEvent            `json:"telemetry_events"`
@@ -225,6 +234,7 @@ type snapshot struct {
 type Store struct {
 	mu                 sync.RWMutex
 	nodes              map[string]Node
+	challenges         map[string]EnrollmentChallenge
 	checkEvents        map[string]CheckEvent
 	heartbeatEvents    []HeartbeatEvent
 	telemetryEvents    []TelemetryEvent
@@ -252,6 +262,7 @@ func New(seedNodes []Node) *Store {
 	}
 	return &Store{
 		nodes:              nodes,
+		challenges:         map[string]EnrollmentChallenge{},
 		checkEvents:        map[string]CheckEvent{},
 		heartbeatEvents:    nil,
 		probeEvents:        map[string]ProbeEvent{},
@@ -396,6 +407,13 @@ func (s *Store) applySnapshot(snap snapshot) error {
 	s.nodes = seedNodes
 
 	s.checkEvents = map[string]CheckEvent{}
+	s.challenges = map[string]EnrollmentChallenge{}
+	for _, challenge := range snap.EnrollmentChallenges {
+		if _, ok := seedNodes[challenge.NodeID]; !ok {
+			return errors.New("snapshot enrollment challenge contains unknown node_id")
+		}
+		s.challenges[challenge.ChallengeID] = challenge
+	}
 	for _, event := range snap.CheckEvents {
 		if _, ok := seedNodes[event.NodeID]; !ok {
 			return errors.New("snapshot check event contains unknown node_id")
@@ -537,6 +555,17 @@ func (s *Store) snapshot() snapshot {
 		return checks[i].EventID < checks[j].EventID
 	})
 
+	challenges := make([]EnrollmentChallenge, 0, len(s.challenges))
+	for _, challenge := range s.challenges {
+		challenges = append(challenges, challenge)
+	}
+	sort.Slice(challenges, func(i, j int) bool {
+		if challenges[i].NodeID == challenges[j].NodeID {
+			return challenges[i].ChallengeID < challenges[j].ChallengeID
+		}
+		return challenges[i].NodeID < challenges[j].NodeID
+	})
+
 	heartbeats := append([]HeartbeatEvent(nil), s.heartbeatEvents...)
 	sort.Slice(heartbeats, func(i, j int) bool {
 		if heartbeats[i].HeartbeatTimestamp == heartbeats[j].HeartbeatTimestamp {
@@ -664,6 +693,7 @@ func (s *Store) snapshot() snapshot {
 
 	return snapshot{
 		Nodes:                  nodes,
+		EnrollmentChallenges:   challenges,
 		CheckEvents:            checks,
 		HeartbeatEvents:        heartbeats,
 		TelemetryEvents:        telemetry,
@@ -693,6 +723,31 @@ func (s *Store) SaveNode(node Node) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.nodes[node.NodeID] = node
+}
+
+func (s *Store) SaveEnrollmentChallenge(challenge EnrollmentChallenge) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.challenges[challenge.ChallengeID] = challenge
+}
+
+func (s *Store) GetEnrollmentChallenge(challengeID string) (EnrollmentChallenge, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	challenge, ok := s.challenges[challengeID]
+	return challenge, ok
+}
+
+func (s *Store) ConsumeEnrollmentChallenge(challengeID, usedAt string) (EnrollmentChallenge, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	challenge, ok := s.challenges[challengeID]
+	if !ok {
+		return EnrollmentChallenge{}, false
+	}
+	challenge.UsedAt = usedAt
+	s.challenges[challengeID] = challenge
+	return challenge, true
 }
 
 func (s *Store) ListNodes() []Node {
@@ -729,6 +784,25 @@ func (s *Store) SaveHeartbeatEvent(event HeartbeatEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.heartbeatEvents = append(s.heartbeatEvents, event)
+}
+
+func (s *Store) ListHeartbeatEventsByNode(nodeID string) []HeartbeatEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []HeartbeatEvent
+	for _, event := range s.heartbeatEvents {
+		if nodeID != "" && event.NodeID != nodeID {
+			continue
+		}
+		out = append(out, event)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].HeartbeatTimestamp == out[j].HeartbeatTimestamp {
+			return out[i].SequenceNumber > out[j].SequenceNumber
+		}
+		return out[i].HeartbeatTimestamp > out[j].HeartbeatTimestamp
+	})
+	return out
 }
 
 func (s *Store) SaveProbeEvent(event ProbeEvent) bool {

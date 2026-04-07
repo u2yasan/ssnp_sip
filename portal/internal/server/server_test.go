@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -98,7 +99,7 @@ func TestPortalHandlerFlow(t *testing.T) {
 
 	enrollPayload := map[string]any{
 		"node_id":                 "node-abc",
-		"enrollment_challenge_id": "enroll-001",
+		"enrollment_challenge_id": issueEnrollmentChallenge(t, handler, "node-abc"),
 		"agent_public_key":        pubHex,
 		"agent_version":           "1.0.0",
 	}
@@ -206,7 +207,7 @@ func TestChecksRejectPolicyMismatchAndTelemetryRejectsInvalidSignature(t *testin
 
 	enrollPayload := map[string]any{
 		"node_id":                 "node-abc",
-		"enrollment_challenge_id": "enroll-001",
+		"enrollment_challenge_id": issueEnrollmentChallenge(t, handler, "node-abc"),
 		"agent_public_key":        pubHex,
 		"agent_version":           "1.0.0",
 	}
@@ -829,8 +830,19 @@ func TestRankingOrdersQualifiedNodesDeterministically(t *testing.T) {
 	dateUTC := now.Format("2006-01-02")
 	for _, nodeID := range []string{"node-abc", "node-def"} {
 		node, _ := srv.store.GetNode(nodeID)
+		node.ValidatedRegistrationAt = now.Add(-(observationWindow + time.Hour)).Format(time.RFC3339)
 		node.LastHeartbeatTimestamp = now.Format(time.RFC3339)
 		srv.store.SaveNode(node)
+		srv.store.SaveHeartbeatEvent(store.HeartbeatEvent{
+			NodeID:             nodeID,
+			HeartbeatTimestamp: now.Add(-10 * time.Minute).Format(time.RFC3339),
+			SequenceNumber:     1,
+		})
+		srv.store.SaveHeartbeatEvent(store.HeartbeatEvent{
+			NodeID:             nodeID,
+			HeartbeatTimestamp: now.Add(-5 * time.Minute).Format(time.RFC3339),
+			SequenceNumber:     2,
+		})
 		srv.store.SaveCheckEvent(store.CheckEvent{
 			EventID:       "check-" + nodeID,
 			NodeID:        nodeID,
@@ -1037,13 +1049,21 @@ func TestRankingTieBreakUsesValidatedRegistrationTime(t *testing.T) {
 	now := time.Now().UTC()
 	dateUTC := now.Format("2006-01-02")
 	nodeABC, _ := srv.store.GetNode("node-abc")
-	nodeABC.ValidatedRegistrationAt = now.Add(2 * time.Minute).Format(time.RFC3339)
+	nodeABC.ValidatedRegistrationAt = now.Add(-(observationWindow + 2*time.Hour)).Format(time.RFC3339)
 	nodeABC.LastHeartbeatTimestamp = now.Format(time.RFC3339)
 	srv.store.SaveNode(nodeABC)
 	nodeDEF, _ := srv.store.GetNode("node-def")
-	nodeDEF.ValidatedRegistrationAt = now.Add(1 * time.Minute).Format(time.RFC3339)
+	nodeDEF.ValidatedRegistrationAt = now.Add(-(observationWindow + 3*time.Hour)).Format(time.RFC3339)
 	nodeDEF.LastHeartbeatTimestamp = now.Format(time.RFC3339)
 	srv.store.SaveNode(nodeDEF)
+	for _, heartbeat := range []store.HeartbeatEvent{
+		{NodeID: "node-abc", HeartbeatTimestamp: now.Add(-10 * time.Minute).Format(time.RFC3339), SequenceNumber: 10},
+		{NodeID: "node-abc", HeartbeatTimestamp: now.Add(-5 * time.Minute).Format(time.RFC3339), SequenceNumber: 11},
+		{NodeID: "node-def", HeartbeatTimestamp: now.Add(-10 * time.Minute).Format(time.RFC3339), SequenceNumber: 10},
+		{NodeID: "node-def", HeartbeatTimestamp: now.Add(-5 * time.Minute).Format(time.RFC3339), SequenceNumber: 11},
+	} {
+		srv.store.SaveHeartbeatEvent(heartbeat)
+	}
 	for _, nodeID := range []string{"node-abc", "node-def"} {
 		srv.store.SaveCheckEvent(store.CheckEvent{
 			EventID:       "check-reg-" + nodeID,
@@ -1153,17 +1173,23 @@ func TestHistoricalQualificationRecomputeUsesSameDayEvidence(t *testing.T) {
 	dayTwo := dayOne.Add(24 * time.Hour)
 
 	node, _ := srv.store.GetNode("node-abc")
+	node.ValidatedRegistrationAt = dayOne.Add(-observationWindow - time.Hour).Format(time.RFC3339)
 	node.LastHeartbeatTimestamp = dayTwo.Format(time.RFC3339)
 	srv.store.SaveNode(node)
 	srv.store.SaveHeartbeatEvent(store.HeartbeatEvent{
 		NodeID:             "node-abc",
-		HeartbeatTimestamp: dayOne.Format(time.RFC3339),
+		HeartbeatTimestamp: dayOne.Add(13*time.Hour + 50*time.Minute).Format(time.RFC3339),
 		SequenceNumber:     1,
 	})
 	srv.store.SaveHeartbeatEvent(store.HeartbeatEvent{
 		NodeID:             "node-abc",
-		HeartbeatTimestamp: dayTwo.Format(time.RFC3339),
+		HeartbeatTimestamp: dayOne.Add(13*time.Hour + 55*time.Minute).Format(time.RFC3339),
 		SequenceNumber:     2,
+	})
+	srv.store.SaveHeartbeatEvent(store.HeartbeatEvent{
+		NodeID:             "node-abc",
+		HeartbeatTimestamp: dayTwo.Format(time.RFC3339),
+		SequenceNumber:     3,
 	})
 	srv.store.SaveCheckEvent(store.CheckEvent{
 		EventID:       "check-day-one",
@@ -1339,7 +1365,7 @@ func TestTelemetryNotificationCooldownAndDeliveryFailure(t *testing.T) {
 
 	enrollPayload := map[string]any{
 		"node_id":                 "node-abc",
-		"enrollment_challenge_id": "enroll-001",
+		"enrollment_challenge_id": issueEnrollmentChallenge(t, handler, "node-abc"),
 		"agent_public_key":        pubHex,
 		"agent_version":           "1.0.0",
 	}
@@ -1371,6 +1397,7 @@ func TestTelemetryNotificationCooldownAndDeliveryFailure(t *testing.T) {
 	failing := notifier.FailingRecorder("smtp down")
 	failingSrv := newTestServerWithNotifier(t, failing)
 	failingHandler := failingSrv.Handler()
+	enrollPayload["enrollment_challenge_id"] = issueEnrollmentChallenge(t, failingHandler, "node-abc")
 	signPayload(t, priv, enrollPayload)
 	if rec := doJSONRequest(t, failingHandler, http.MethodPost, "/api/v1/agent/enroll", enrollPayload); rec.Code != http.StatusOK {
 		t.Fatalf("failing enroll status = %d, want 200", rec.Code)
@@ -1413,7 +1440,7 @@ func TestTelemetryUsesFallbackRecipientWhenNodeEmailMissing(t *testing.T) {
 
 	enrollPayload := map[string]any{
 		"node_id":                 "node-abc",
-		"enrollment_challenge_id": "enroll-001",
+		"enrollment_challenge_id": issueEnrollmentChallenge(t, handler, "node-abc"),
 		"agent_public_key":        pubHex,
 		"agent_version":           "1.0.0",
 	}
@@ -1466,7 +1493,7 @@ func TestTelemetryRecordsFailureWhenNoRecipientExists(t *testing.T) {
 
 	enrollPayload := map[string]any{
 		"node_id":                 "node-abc",
-		"enrollment_challenge_id": "enroll-001",
+		"enrollment_challenge_id": issueEnrollmentChallenge(t, handler, "node-abc"),
 		"agent_public_key":        pubHex,
 		"agent_version":           "1.0.0",
 	}
@@ -1518,8 +1545,8 @@ func TestHeartbeatAlertScannerSendsCriticalNotifications(t *testing.T) {
 		t.Fatalf("notification count = %d, want 1 stale alert", recorder.Count())
 	}
 	last, _ := recorder.Last()
-	if last.AlertCode != alertHeartbeatStale || last.Severity != notifier.SeverityCritical {
-		t.Fatalf("last notification = %#v, want heartbeat_stale critical", last)
+	if last.AlertCode != alertHeartbeatStale || last.Severity != notifier.SeverityWarning {
+		t.Fatalf("last notification = %#v, want heartbeat_stale warning", last)
 	}
 
 	srv.evaluateHeartbeatAlerts(context.Background(), now.Add(10*time.Minute))
@@ -1564,7 +1591,7 @@ func TestPersistenceAcrossRestartKeepsCooldownAndState(t *testing.T) {
 	fingerprint := mustFingerprint(t, pubHex)
 	enrollPayload := map[string]any{
 		"node_id":                 "node-abc",
-		"enrollment_challenge_id": "enroll-001",
+		"enrollment_challenge_id": issueEnrollmentChallenge(t, handler, "node-abc"),
 		"agent_public_key":        pubHex,
 		"agent_version":           "1.0.0",
 	}
@@ -1630,13 +1657,21 @@ func TestAgentAndPortalEndToEndOverHTTP(t *testing.T) {
 	tempDir := t.TempDir()
 	policyPath := writeE2EPolicy(t, tempDir)
 	srv := mustNewServer(t, policyPath, &notifier.Recorder{})
-	httpServer := httptest.NewServer(srv.Handler())
-	defer httpServer.Close()
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("sandbox does not allow local listener: %v", err)
+	}
+	httpServer := &http.Server{Handler: srv.Handler()}
+	go func() {
+		_ = httpServer.Serve(listener)
+	}()
+	defer httpServer.Shutdown(context.Background())
 
 	privateKeyPath, publicKeyPath := writeAgentKeys(t, tempDir)
-	configPath := writeAgentConfig(t, tempDir, httpServer.URL, privateKeyPath, publicKeyPath)
+	configPath := writeAgentConfig(t, tempDir, "http://"+listener.Addr().String(), privateKeyPath, publicKeyPath)
 
-	runAgentCommand(t, agentBinary, agentDir, configPath, "enroll", "--challenge-id", "enroll-001")
+	challengeID := issueEnrollmentChallenge(t, srv.Handler(), "node-abc")
+	runAgentCommand(t, agentBinary, agentDir, configPath, "enroll", "--challenge-id", challengeID)
 
 	runCmd := exec.Command(agentBinary, "--config", configPath, "run")
 	runCmd.Dir = agentDir
@@ -1703,7 +1738,47 @@ func mustNewServer(t *testing.T, policyPath string, n notifier.Notifier) *Server
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	now := time.Now().UTC()
+	for _, nodeID := range []string{"node-abc", "node-def"} {
+		node, ok := srv.store.GetNode(nodeID)
+		if !ok {
+			continue
+		}
+		node.ValidatedRegistrationAt = now.Add(-(observationWindow + time.Hour)).Format(time.RFC3339)
+		node.LastHeartbeatTimestamp = now.Format(time.RFC3339)
+		srv.store.SaveNode(node)
+		srv.store.SaveHeartbeatEvent(store.HeartbeatEvent{
+			NodeID:             nodeID,
+			HeartbeatTimestamp: now.Add(-10 * time.Minute).Format(time.RFC3339),
+			SequenceNumber:     1,
+		})
+		srv.store.SaveHeartbeatEvent(store.HeartbeatEvent{
+			NodeID:             nodeID,
+			HeartbeatTimestamp: now.Add(-5 * time.Minute).Format(time.RFC3339),
+			SequenceNumber:     2,
+		})
+	}
 	return srv
+}
+
+func issueEnrollmentChallenge(t *testing.T, handler http.Handler, nodeID string) string {
+	t.Helper()
+	rec := doJSONRequest(t, handler, http.MethodPost, "/api/v1/agent/enrollment-challenges", map[string]any{
+		"node_id": nodeID,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("challenge status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		ChallengeID string `json:"challenge_id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if payload.ChallengeID == "" {
+		t.Fatal("expected challenge_id")
+	}
+	return payload.ChallengeID
 }
 
 func writeNodesConfigNoEmail(t *testing.T, dir string) string {
