@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"net"
 	"net/http"
 	"os"
@@ -146,65 +145,40 @@ func TestSmokeE2E(t *testing.T) {
 		t.Fatalf("rankings = %#v, want node-abc", rankings)
 	}
 
+	var rewardEligibility struct {
+		Items []struct {
+			NodeID         string `json:"node_id"`
+			Qualified      bool   `json:"qualified"`
+			RewardEligible bool   `json:"reward_eligible"`
+		} `json:"items"`
+	}
+	getJSONOK(t, "http://"+listener.Addr().String()+"/api/v1/reward-eligibility/"+dateUTC, &rewardEligibility)
+	if len(rewardEligibility.Items) != 1 ||
+		rewardEligibility.Items[0].NodeID != "node-abc" ||
+		!rewardEligibility.Items[0].Qualified ||
+		!rewardEligibility.Items[0].RewardEligible {
+		t.Fatalf("reward eligibility = %#v, want qualified eligible node-abc", rewardEligibility)
+	}
+
 	var operatorStatus struct {
-		NodeID         string `json:"node_id"`
-		Qualified      bool   `json:"qualified"`
-		RewardEligible bool   `json:"reward_eligible"`
+		NodeID          string   `json:"node_id"`
+		Qualified       bool     `json:"qualified"`
+		RewardEligible  bool     `json:"reward_eligible"`
+		StatusReason    string   `json:"status_reason"`
+		FailureReasons  []string `json:"failure_reasons"`
+		HeartbeatPassed bool     `json:"heartbeat_passed"`
+		HardwarePassed  bool     `json:"hardware_passed"`
+		VotingKeyPassed bool     `json:"voting_key_passed"`
 	}
 	getJSONOK(t, "http://"+listener.Addr().String()+"/api/v1/operator-node-status/node-abc/"+dateUTC, &operatorStatus)
-	if operatorStatus.NodeID != "node-abc" || !operatorStatus.Qualified || !operatorStatus.RewardEligible {
-		t.Fatalf("operator status = %#v, want qualified eligible node-abc", operatorStatus)
-	}
-}
-
-func issueEnrollmentChallengeHTTP(t *testing.T, baseURL, nodeID string) string {
-	t.Helper()
-	var payload struct {
-		ChallengeID string `json:"challenge_id"`
-	}
-	postJSONDecode(t, baseURL+"/api/v1/agent/enrollment-challenges", map[string]any{"node_id": nodeID}, &payload)
-	if payload.ChallengeID == "" {
-		t.Fatal("expected challenge_id")
-	}
-	return payload.ChallengeID
-}
-
-func postJSONOK(t *testing.T, url string, payload any) {
-	t.Helper()
-	var response map[string]any
-	postJSONDecode(t, url, payload, &response)
-}
-
-func postJSONDecode(t *testing.T, url string, payload any, target any) {
-	t.Helper()
-	body, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatalf("Marshal() error = %v", err)
-	}
-	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
-	if err != nil {
-		t.Fatalf("POST %s error = %v", url, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		t.Fatalf("POST %s status = %d", url, resp.StatusCode)
-	}
-	if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
-		t.Fatalf("Decode(%s) error = %v", url, err)
-	}
-}
-
-func getJSONOK(t *testing.T, url string, target any) {
-	t.Helper()
-	resp, err := http.Get(url)
-	if err != nil {
-		t.Fatalf("GET %s error = %v", url, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		t.Fatalf("GET %s status = %d", url, resp.StatusCode)
-	}
-	if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
-		t.Fatalf("Decode(%s) error = %v", url, err)
+	if operatorStatus.NodeID != "node-abc" ||
+		!operatorStatus.Qualified ||
+		!operatorStatus.RewardEligible ||
+		operatorStatus.StatusReason != "reward_eligible" ||
+		len(operatorStatus.FailureReasons) != 0 ||
+		!operatorStatus.HeartbeatPassed ||
+		!operatorStatus.HardwarePassed ||
+		!operatorStatus.VotingKeyPassed {
+		t.Fatalf("operator status = %#v, want clean qualified eligible node-abc", operatorStatus)
 	}
 }

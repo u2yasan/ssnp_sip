@@ -2,9 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/u2yasan/ssnp_sip/agent/internal/config"
@@ -19,9 +19,15 @@ func TestRunGenKeyWritesLoadableEd25519KeyPair(t *testing.T) {
 		t.Fatalf("runGenKey() error = %v", err)
 	}
 
-	output := stdout.String()
-	if !strings.Contains(output, "private_key_path=") || !strings.Contains(output, "public_key_path=") {
-		t.Fatalf("runGenKey() output = %q, want key paths", output)
+	var payload struct {
+		PrivateKeyPath string `json:"private_key_path"`
+		PublicKeyPath  string `json:"public_key_path"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if payload.PrivateKeyPath == "" || payload.PublicKeyPath == "" {
+		t.Fatalf("runGenKey() payload = %#v, want key paths", payload)
 	}
 
 	cfgPath := filepath.Join(dir, "config.yaml")

@@ -23,7 +23,7 @@ go run ./cmd/program-agent --config ./config.example.yaml telemetry --warning-fl
 
 ## コマンド
 
-- `gen-key`: `--out-dir` に `agent_private_key.pem` と `agent_public_key.pem` を出力する
+- `gen-key`: `--out-dir` に `agent_private_key.pem` と `agent_public_key.pem` を出力し、その path を JSON で表示する
 - `enroll`: ローカル公開鍵を portal の enrollment challenge に紐付ける
 - `run`: policy を取得し、定期チェックと heartbeat 送信を行う
 - `check`: hardware / CPU / disk の bounded check を実行し、結果を送信する

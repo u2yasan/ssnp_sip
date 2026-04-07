@@ -418,3 +418,55 @@ func copyFile(t *testing.T, srcPath, dstPath string) {
 		t.Fatalf("WriteFile(%s) error = %v", dstPath, err)
 	}
 }
+
+func issueEnrollmentChallengeHTTP(t *testing.T, baseURL, nodeID string) string {
+	t.Helper()
+	var payload struct {
+		ChallengeID string `json:"challenge_id"`
+	}
+	postJSONDecode(t, baseURL+"/api/v1/agent/enrollment-challenges", map[string]any{"node_id": nodeID}, &payload)
+	if payload.ChallengeID == "" {
+		t.Fatal("expected challenge_id")
+	}
+	return payload.ChallengeID
+}
+
+func postJSONOK(t *testing.T, url string, payload any) {
+	t.Helper()
+	var response map[string]any
+	postJSONDecode(t, url, payload, &response)
+}
+
+func postJSONDecode(t *testing.T, url string, payload any, target any) {
+	t.Helper()
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST %s error = %v", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		t.Fatalf("POST %s status = %d", url, resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
+		t.Fatalf("Decode(%s) error = %v", url, err)
+	}
+}
+
+func getJSONOK(t *testing.T, url string, target any) {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s error = %v", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		t.Fatalf("GET %s status = %d", url, resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
+		t.Fatalf("Decode(%s) error = %v", url, err)
+	}
+}

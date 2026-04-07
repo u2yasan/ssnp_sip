@@ -48,4 +48,9 @@ GitHub Actions workflow `.github/workflows/go-test.yml` runs:
 - `portal`: `go test ./...` and `go build ./...`
 - `smoke`: `make smoke`
 
+It runs on:
+
+- `pull_request` targeting `main`
+- `push` to `main`
+
 If local behavior and CI behavior diverge, treat the workflow as broken and fix the command path rather than introducing a second smoke path.

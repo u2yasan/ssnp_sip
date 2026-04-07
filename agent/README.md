@@ -23,7 +23,7 @@ go run ./cmd/program-agent --config ./config.example.yaml telemetry --warning-fl
 
 ## Commands
 
-- `gen-key`: writes `agent_private_key.pem` and `agent_public_key.pem` to `--out-dir`
+- `gen-key`: writes `agent_private_key.pem` and `agent_public_key.pem` to `--out-dir` and prints their paths as JSON
 - `enroll`: binds the local public key to a portal enrollment challenge
 - `run`: fetches policy, performs recurring checks, and submits heartbeats
 - `check`: runs bounded local hardware / CPU / disk checks and submits the result

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -103,8 +104,10 @@ func runGenKey(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(stdout, "private_key_path=%s\npublic_key_path=%s\n", privateKeyPath, publicKeyPath)
-	return err
+	return json.NewEncoder(stdout).Encode(map[string]string{
+		"private_key_path": privateKeyPath,
+		"public_key_path":  publicKeyPath,
+	})
 }
 
 type stringListFlag []string
