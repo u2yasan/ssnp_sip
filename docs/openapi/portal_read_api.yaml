@@ -23,6 +23,10 @@ paths:
         Returns ranking records computed for the requested UTC date. If ranking
         has not been computed for that date, the response is `200` with an empty
         `items` array.
+
+        Ranking order is descending by total score. Ties are resolved by higher
+        finalization score, then higher availability score, then earlier
+        validated registration time, and finally lexicographic `node_id`.
       operationId: getRankings
       parameters:
         - $ref: "#/components/parameters/DateUTCPath"
@@ -42,6 +46,38 @@ paths:
                         date_utc: "2026-04-07"
                         policy_version: "2026-04"
                         rank_position: 1
+                        availability_score: 20
+                        finalization_score: 20
+                        chain_sync_score: 20
+                        voting_key_score: 10
+                        base_performance_score: 70
+                        decentralization_score: 0
+                        total_score: 70
+                        operator_group_id: "node-abc"
+                        reward_eligible: true
+                        computed_at: "2026-04-07T00:00:10Z"
+                tieBreakByRegistrationTime:
+                  value:
+                    date_utc: "2026-04-07"
+                    items:
+                      - node_id: "node-def"
+                        date_utc: "2026-04-07"
+                        policy_version: "2026-04"
+                        rank_position: 1
+                        availability_score: 20
+                        finalization_score: 20
+                        chain_sync_score: 20
+                        voting_key_score: 10
+                        base_performance_score: 70
+                        decentralization_score: 0
+                        total_score: 70
+                        operator_group_id: "node-def"
+                        reward_eligible: true
+                        computed_at: "2026-04-07T00:00:10Z"
+                      - node_id: "node-abc"
+                        date_utc: "2026-04-07"
+                        policy_version: "2026-04"
+                        rank_position: 2
                         availability_score: 20
                         finalization_score: 20
                         chain_sync_score: 20
