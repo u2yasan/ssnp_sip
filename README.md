@@ -18,6 +18,7 @@ This repository contains:
 - probe usage: `probe/README.md`
 - testing guide: `docs/testing.md`
 - testnet operator flow: `docs/testnet_runbook.md`
+- Python agent distribution: `docs/agent_py_distribution.md`
 - design overview: `docs/specs/00_project_overview.md`
 - open questions: `docs/specs/10_open_questions.md`
 

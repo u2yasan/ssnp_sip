@@ -18,6 +18,7 @@
 - probe の使い方: `probe/README.md`
 - testing ガイド: `docs/testing.md`
 - testnet 運用手順: `docs/testnet_runbook.md`
+- Python agent 配布: `docs/agent_py_distribution.md`
 - 設計概要: `docs/specs/00_project_overview.md`
 - 未解決論点: `docs/specs/10_open_questions.md`
 
