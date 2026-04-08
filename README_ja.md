@@ -5,14 +5,15 @@
 このリポジトリには次を含む。
 
 - SSNP の SIP と設計ドキュメント
-- `agent`: Program Agent stub
+- `agent_py`: オペレーター向け Python Program Agent client
+- `agent`: 廃止予定の Go 参照実装
 - `portal`: portal/API stub
 - `probe`: external probe worker stub
 
 ## 入口
 
 - リポジトリ概要と共通 smoke 実行: `make smoke`
-- agent の使い方: `agent/README.md`
+- Python agent の使い方: `agent/README_ja.md`
 - portal の使い方: `portal/README.md`
 - probe の使い方: `probe/README.md`
 - testing ガイド: `docs/testing.md`
@@ -33,8 +34,8 @@ make build
 コマンドの役割:
 
 - `make test`: リポジトリ全体の回帰検知
-- `make build`: portal / agent / probe worker の build
-- `make smoke`: 最低限動作の正規チェック。Go の end-to-end smoke フローを実行する
+- `make build`: portal / probe worker の build と Python agent client の構文確認
+- `make smoke`: 最低限動作の正規チェック。Python agent client を使う end-to-end smoke フローを実行する
 
 smoke 用 seed データの説明は `testdata/smoke/README.md` を参照。
 

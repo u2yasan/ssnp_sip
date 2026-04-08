@@ -5,13 +5,13 @@
 Use the repository root commands as follows.
 
 - `make test`: regression check across repository test suites
-- `make build`: compile portal, agent, and probe worker
+- `make build`: compile portal and probe worker, and syntax-check the Python agent client
 - `make smoke`: canonical minimum-working end-to-end verification
 - `make testnet-local`: testnet-style local integration verification
 
 ## Smoke
 
-`make smoke` runs the Go end-to-end smoke test in `portal/internal/server`.
+`make smoke` runs the end-to-end smoke test in `portal/internal/server` using the Python agent client from `agent_py/`.
 
 It verifies:
 
@@ -67,7 +67,7 @@ Command roles are intentionally separate:
 
 GitHub Actions workflow `.github/workflows/go-test.yml` runs:
 
-- `agent`: `go test ./...` and `go build ./...`
+- `agent_py`: `python3 -m unittest discover -s tests -v` and `python3 -m compileall ssnp_agent`
 - `portal`: `go test ./...` and `go build ./...`
 - `probe`: `go test ./...` and `go build ./...`
 - `smoke`: `make smoke`

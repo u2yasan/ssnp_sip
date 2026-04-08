@@ -57,11 +57,21 @@ go run ./cmd/portal-server \
   --notifier-mode stdout
 ```
 
+Prepare the Python agent client:
+
+```sh
+cd agent_py
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -e .
+```
+
 Generate agent keys:
 
 ```sh
-cd agent
-go run ./cmd/program-agent --config ./config.testnet.example.yaml gen-key --out-dir ./keys
+cd agent_py
+. .venv/bin/activate
+python -m ssnp_agent --config ../agent/config.testnet.example.yaml gen-key --out-dir ../agent/keys
 ```
 
 Issue an enrollment challenge:
@@ -76,9 +86,10 @@ curl -sS \
 Enroll the agent:
 
 ```sh
-cd agent
-go run ./cmd/program-agent \
-  --config ./config.testnet.example.yaml \
+cd agent_py
+. .venv/bin/activate
+python -m ssnp_agent \
+  --config ../agent/config.testnet.example.yaml \
   enroll \
   --challenge-id <challenge-id>
 ```
@@ -86,8 +97,9 @@ go run ./cmd/program-agent \
 Start the agent loop:
 
 ```sh
-cd agent
-go run ./cmd/program-agent --config ./config.testnet.example.yaml run
+cd agent_py
+. .venv/bin/activate
+python -m ssnp_agent --config ../agent/config.testnet.example.yaml run
 ```
 
 Start two probe workers. Duplicate the config and change only `region_id` per instance:

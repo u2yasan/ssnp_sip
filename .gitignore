@@ -1,5 +1,9 @@
 .cache/
 agent/.cache/
+agent_py/.venv/
+agent_py/__pycache__/
+agent_py/ssnp_agent/__pycache__/
+agent_py/tests/__pycache__/
 portal/.cache/
 portal-state.json
 !testdata/smoke/portal-state.json

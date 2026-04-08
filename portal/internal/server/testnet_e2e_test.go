@@ -20,9 +20,8 @@ func TestTestnetOperableE2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("filepath.Abs() error = %v", err)
 	}
-	agentDir := filepath.Join(repoRoot, "agent")
+	agentDir := agentPythonDir(t, repoRoot)
 	probeDir := filepath.Join(repoRoot, "probe")
-	agentBinary := buildAgentBinary(t, agentDir)
 	probeBinary := buildProbeBinary(t, probeDir)
 
 	sourceURL, closeSource := startTestHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -79,9 +78,9 @@ func TestTestnetOperableE2E(t *testing.T) {
 	configPath := writeAgentConfigWithEndpoint(t, tempDir, "http://"+listener.Addr().String(), privateKeyPath, publicKeyPath, targetURL)
 
 	challengeID := issueEnrollmentChallengeHTTP(t, "http://"+listener.Addr().String(), "node-abc")
-	runAgentCommand(t, agentBinary, agentDir, configPath, "enroll", "--challenge-id", challengeID)
+	runAgentCommand(t, agentDir, configPath, "enroll", "--challenge-id", challengeID)
 
-	runCmd := exec.Command(agentBinary, "--config", configPath, "run")
+	runCmd := exec.Command("python3", "-m", "ssnp_agent", "--config", configPath, "run")
 	runCmd.Dir = agentDir
 	runCmd.Env = append(os.Environ(), "HOME="+tempDir)
 	runOutput := &bytes.Buffer{}
@@ -98,8 +97,8 @@ func TestTestnetOperableE2E(t *testing.T) {
 	}()
 
 	waitForHeartbeatSequence(t, srv, 6*time.Second, 2)
-	runAgentCommand(t, agentBinary, agentDir, configPath, "check", "--event-type", "registration", "--event-id", "testnet-check-001")
-	runAgentCommand(t, agentBinary, agentDir, configPath, "telemetry", "--warning-flag", "probe_worker_active")
+	runAgentCommand(t, agentDir, configPath, "check", "--event-type", "registration", "--event-id", "testnet-check-001")
+	runAgentCommand(t, agentDir, configPath, "telemetry", "--warning-flag", "probe_worker_active")
 
 	probeConfigAP := writeProbeConfig(t, tempDir, "http://"+listener.Addr().String(), sourceURL, "ap-sg-1", map[string]string{
 		"node-abc": targetURL,

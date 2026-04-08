@@ -2,23 +2,32 @@
 
 # Program Agent
 
-Minimal Go stub for the SSNP Program Agent.
+Recommended operator client: Python package in `../agent_py`.
+
+This Go implementation remains only as a reference stub during migration.
+Do not treat it as the primary operator path.
 
 ## Quickstart
 
 Generate a dedicated SSNP agent keypair:
 
 ```sh
-go run ./cmd/program-agent --config ./config.example.yaml gen-key --out-dir ./keys
+cd ../agent_py
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -e .
+python -m ssnp_agent --config ../agent/config.example.yaml gen-key --out-dir ../agent/keys
 ```
 
 Use a config based on `config.example.yaml`, then run:
 
 ```sh
-go run ./cmd/program-agent --config ./config.example.yaml enroll --challenge-id enroll-001
-go run ./cmd/program-agent --config ./config.example.yaml run
-go run ./cmd/program-agent --config ./config.example.yaml check --event-type registration --event-id check-001
-go run ./cmd/program-agent --config ./config.example.yaml telemetry --warning-flag portal_unreachable
+cd ../agent_py
+. .venv/bin/activate
+python -m ssnp_agent --config ../agent/config.example.yaml enroll --challenge-id enroll-001
+python -m ssnp_agent --config ../agent/config.example.yaml run
+python -m ssnp_agent --config ../agent/config.example.yaml check --event-type registration --event-id check-001
+python -m ssnp_agent --config ../agent/config.example.yaml telemetry --warning-flag portal_unreachable
 ```
 
 For testnet-oriented setup, start from `config.testnet.example.yaml` and follow `../docs/testnet_runbook.md`.
@@ -48,6 +57,7 @@ For testnet-oriented setup, start from `config.testnet.example.yaml` and follow 
 Use `make test` and `make smoke` from the repository root when you want the shared repository-level checks.
 
 ```sh
-env GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod go test ./...
-env GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod go build ./...
+cd ../agent_py
+python3 -m unittest discover -s tests -v
+python3 -m compileall ssnp_agent
 ```

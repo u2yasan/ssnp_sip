@@ -2,23 +2,32 @@
 
 # Program Agent
 
-SSNP Program Agent の最小 Go stub。
+推奨オペレーター client は `../agent_py` の Python package。
+
+この Go 実装は移行中の参照 stub としてのみ残す。
+主運用導線として扱わないこと。
 
 ## Quickstart
 
 SSNP 専用の agent 鍵ペアを生成:
 
 ```sh
-go run ./cmd/program-agent --config ./config.example.yaml gen-key --out-dir ./keys
+cd ../agent_py
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -e .
+python -m ssnp_agent --config ../agent/config.example.yaml gen-key --out-dir ../agent/keys
 ```
 
 `config.example.yaml` をベースに設定した後、次を実行:
 
 ```sh
-go run ./cmd/program-agent --config ./config.example.yaml enroll --challenge-id enroll-001
-go run ./cmd/program-agent --config ./config.example.yaml run
-go run ./cmd/program-agent --config ./config.example.yaml check --event-type registration --event-id check-001
-go run ./cmd/program-agent --config ./config.example.yaml telemetry --warning-flag portal_unreachable
+cd ../agent_py
+. .venv/bin/activate
+python -m ssnp_agent --config ../agent/config.example.yaml enroll --challenge-id enroll-001
+python -m ssnp_agent --config ../agent/config.example.yaml run
+python -m ssnp_agent --config ../agent/config.example.yaml check --event-type registration --event-id check-001
+python -m ssnp_agent --config ../agent/config.example.yaml telemetry --warning-flag portal_unreachable
 ```
 
 testnet 向け導線は `config.testnet.example.yaml` と `../docs/testnet_runbook.md` を使うこと。
@@ -48,6 +57,7 @@ testnet 向け導線は `config.testnet.example.yaml` と `../docs/testnet_runbo
 リポジトリ共通の検証を回す場合は root で `make test` と `make smoke` を使う。
 
 ```sh
-env GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod go test ./...
-env GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod go build ./...
+cd ../agent_py
+python3 -m unittest discover -s tests -v
+python3 -m compileall ssnp_agent
 ```

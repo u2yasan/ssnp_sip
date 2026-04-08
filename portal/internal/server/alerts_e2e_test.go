@@ -314,8 +314,7 @@ func TestAgentAndPortalEndToEndOverHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("filepath.Abs() error = %v", err)
 	}
-	agentDir := filepath.Join(repoRoot, "agent")
-	agentBinary := buildAgentBinary(t, agentDir)
+	agentDir := agentPythonDir(t, repoRoot)
 
 	tempDir := t.TempDir()
 	policyPath := writeE2EPolicy(t, tempDir)
@@ -334,9 +333,9 @@ func TestAgentAndPortalEndToEndOverHTTP(t *testing.T) {
 	configPath := writeAgentConfig(t, tempDir, "http://"+listener.Addr().String(), privateKeyPath, publicKeyPath)
 
 	challengeID := issueEnrollmentChallenge(t, srv.Handler(), "node-abc")
-	runAgentCommand(t, agentBinary, agentDir, configPath, "enroll", "--challenge-id", challengeID)
+	runAgentCommand(t, agentDir, configPath, "enroll", "--challenge-id", challengeID)
 
-	runCmd := exec.Command(agentBinary, "--config", configPath, "run")
+	runCmd := exec.Command("python3", "-m", "ssnp_agent", "--config", configPath, "run")
 	runCmd.Dir = agentDir
 	runCmd.Env = append(os.Environ(), "HOME="+tempDir)
 	runOutput := &bytes.Buffer{}
@@ -361,7 +360,7 @@ func TestAgentAndPortalEndToEndOverHTTP(t *testing.T) {
 		t.Fatalf("run Wait() error = %v\noutput:\n%s", err, runOutput.String())
 	}
 
-	runAgentCommand(t, agentBinary, agentDir, configPath, "check", "--event-type", "registration", "--event-id", "check-e2e-001")
+	runAgentCommand(t, agentDir, configPath, "check", "--event-type", "registration", "--event-id", "check-e2e-001")
 
 	node, ok := srv.store.GetNode("node-abc")
 	if !ok {

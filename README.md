@@ -5,14 +5,15 @@ Language: English | [日本語](README_ja.md)
 This repository contains:
 
 - SSNP SIP and design documents
-- `agent`: Program Agent stub
+- `agent_py`: Python Program Agent client for operators
+- `agent`: deprecated Go reference implementation
 - `portal`: portal/API stub
 - `probe`: external probe worker stub
 
 ## Entry Points
 
 - repository overview and common smoke entry: `make smoke`
-- agent usage: `agent/README.md`
+- Python agent usage: `agent/README.md`
 - portal usage: `portal/README.md`
 - probe usage: `probe/README.md`
 - testing guide: `docs/testing.md`
@@ -33,8 +34,8 @@ make build
 Command roles:
 
 - `make test`: regression check for the repository test suites
-- `make build`: compile portal, agent, and probe worker
-- `make smoke`: canonical minimum-working check; runs the Go end-to-end smoke flow
+- `make build`: compile portal and probe worker, and syntax-check the Python agent client
+- `make smoke`: canonical minimum-working check; runs the end-to-end smoke flow with the Python agent client
 
 Smoke seed data is documented in `testdata/smoke/README.md`.
 

@@ -238,32 +238,13 @@ func containsReason(reasons []string, want string) bool {
 	return false
 }
 
-func buildAgentBinary(t *testing.T, agentDir string) string {
+func agentPythonDir(t *testing.T, repoRoot string) string {
 	t.Helper()
-	binaryPath := filepath.Join(t.TempDir(), "program-agent")
-	if runtime.GOOS == "windows" {
-		binaryPath += ".exe"
+	pythonDir := filepath.Join(repoRoot, "agent_py")
+	if _, err := os.Stat(filepath.Join(pythonDir, "pyproject.toml")); err != nil {
+		t.Fatalf("python agent client not found: %v", err)
 	}
-	buildCache, err := filepath.Abs(filepath.Join(agentDir, ".cache", "go-build"))
-	if err != nil {
-		t.Fatalf("filepath.Abs(go-build) error = %v", err)
-	}
-	modCache, err := filepath.Abs(filepath.Join(agentDir, ".cache", "go-mod"))
-	if err != nil {
-		t.Fatalf("filepath.Abs(go-mod) error = %v", err)
-	}
-	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/program-agent")
-	cmd.Dir = agentDir
-	cmd.Env = append(
-		os.Environ(),
-		"GOCACHE="+buildCache,
-		"GOMODCACHE="+modCache,
-	)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("go build agent error = %v\noutput:\n%s", err, string(output))
-	}
-	return binaryPath
+	return pythonDir
 }
 
 func buildProbeBinary(t *testing.T, probeDir string) string {
@@ -294,9 +275,9 @@ func buildProbeBinary(t *testing.T, probeDir string) string {
 	return binaryPath
 }
 
-func runAgentCommand(t *testing.T, agentBinary, agentDir, configPath string, args ...string) string {
+func runAgentCommand(t *testing.T, agentDir, configPath string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command(agentBinary, append([]string{"--config", configPath}, args...)...)
+	cmd := exec.Command("python3", append([]string{"-m", "ssnp_agent", "--config", configPath}, args...)...)
 	cmd.Dir = agentDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
