@@ -98,7 +98,7 @@ func TestTestnetOperableE2E(t *testing.T) {
 
 	waitForHeartbeatSequence(t, srv, 6*time.Second, 2)
 	runAgentCommand(t, agentDir, configPath, "check", "--event-type", "registration", "--event-id", "testnet-check-001")
-	runAgentCommand(t, agentDir, configPath, "telemetry", "--warning-flag", "probe_worker_active")
+	runAgentCommand(t, agentDir, configPath, "telemetry", "--warning-flag", "portal_unreachable")
 
 	probeConfigAP := writeProbeConfig(t, tempDir, "http://"+listener.Addr().String(), sourceURL, "ap-sg-1", map[string]string{
 		"node-abc": targetURL,
