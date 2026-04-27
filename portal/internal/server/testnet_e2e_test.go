@@ -174,20 +174,20 @@ func TestTestnetOperableE2E(t *testing.T) {
 
 	var rewardAllocations struct {
 		Items []struct {
-			NodeID          string  `json:"node_id"`
-			Qualified       bool    `json:"qualified"`
-			RewardEligible  bool    `json:"reward_eligible"`
-			AllocationShare float64 `json:"allocation_share"`
-			AllocationUnits float64 `json:"allocation_units"`
+			NodeID             string  `json:"node_id"`
+			RankPosition       int     `json:"rank_position"`
+			QualifiedNodeCount int     `json:"qualified_node_count"`
+			RewardEligible     bool    `json:"reward_eligible"`
+			RewardAmount       float64 `json:"reward_amount"`
 		} `json:"items"`
 	}
 	getJSONOK(t, "http://"+listener.Addr().String()+"/api/v1/reward-allocations/"+dateUTC, &rewardAllocations)
 	if len(rewardAllocations.Items) != 1 ||
 		rewardAllocations.Items[0].NodeID != "node-abc" ||
-		!rewardAllocations.Items[0].Qualified ||
 		!rewardAllocations.Items[0].RewardEligible ||
-		rewardAllocations.Items[0].AllocationShare <= 0 ||
-		rewardAllocations.Items[0].AllocationUnits <= 0 {
+		rewardAllocations.Items[0].RankPosition != 1 ||
+		rewardAllocations.Items[0].QualifiedNodeCount != 1 ||
+		rewardAllocations.Items[0].RewardAmount <= 0 {
 		t.Fatalf("reward allocations = %#v", rewardAllocations)
 	}
 
