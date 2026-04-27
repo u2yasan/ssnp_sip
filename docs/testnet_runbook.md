@@ -1,3 +1,5 @@
+[日本語](testnet_runbook_ja.md) | English
+
 # Testnet Runbook
 
 ## Purpose
@@ -25,39 +27,86 @@ This is rollout/proving infrastructure, not production hardening.
 
 ## Required Files
 
-- portal seed nodes: `portal/nodes.testnet.example.yaml`
+- Go release bundle:
+  - `portal-server-linux-amd64`
+  - `probe-worker-linux-amd64`
+  - `program_agent_policy.v2026-04.yaml`
+  - `nodes.testnet.example.yaml`
+  - `probe.config.testnet.example.yaml`
+  - `ssnp-portal.service`
+  - `ssnp-probe.service`
+  - `install-go-release.sh`
+  - `SHA256SUMS`
 - agent config: `agent/config.testnet.example.yaml`
-- probe config: `probe/config.testnet.example.yaml`
 
-Keep the same `node_id` across all three.
+Keep the same `node_id` across the portal nodes config, agent config, and probe config.
 
 ## Operator Flow
 
-1. Add the node to the portal seed config.
-2. Start the portal.
-3. Generate agent keys.
-4. Issue an enrollment challenge.
-5. Enroll the agent.
-6. Start the agent loop.
-7. Start at least two probe-worker instances with different `region_id` values.
-8. Confirm populated read views.
+1. Build the Go release bundle on CI or a development machine.
+2. Copy the release bundle to the server.
+3. Use `install-go-release.sh` to install portal/probe binaries and systemd units.
+4. Add the node to the portal seed config.
+5. Start the portal.
+6. Generate agent keys.
+7. Issue an enrollment challenge.
+8. Enroll the agent.
+9. Start the agent loop.
+10. Start at least two probe-worker instances with different `region_id` values.
+11. Confirm populated read views.
 
 ## Example Commands
 
-Start the portal in dry-run notification mode:
+Build the Go release bundle. Run this on CI or a development machine, not on the server:
 
 ```sh
-cd portal
-go run ./cmd/portal-server \
-  --listen 127.0.0.1:8080 \
-  --policy ../docs/policies/program_agent_policy.v2026-04.yaml \
-  --nodes-config ./nodes.testnet.example.yaml \
-  --state-path ./portal-state.json \
-  --nominal-daily-pool 1000 \
-  --notifier-mode stdout
+./scripts/build-go-release.sh
 ```
 
-Prepare the Python agent client:
+Verify the bundle on the server:
+
+```sh
+cd /path/to/go-release
+sha256sum -c SHA256SUMS
+```
+
+Install portal/probe binaries and systemd units on the server:
+
+```sh
+sudo ./install-go-release.sh /path/to/go-release
+```
+
+Edit the portal node seed:
+
+```sh
+sudo editor /etc/ssnp-portal/nodes.testnet.yaml
+```
+
+Edit the probe config. For multiple workers, change `region_id` per instance:
+
+```sh
+sudo editor /etc/ssnp-probe/config.yaml
+```
+
+Start the portal in dry-run notification mode. The current unit is fixed to `--notifier-mode stdout`:
+
+```sh
+sudo systemctl start ssnp-portal
+sudo systemctl status ssnp-portal
+```
+
+The current `ssnp-portal.service` listens on `127.0.0.1:8080`. If agent/probe processes on other hosts must connect to it, use a TLS reverse proxy on the same host, a VPN, or an SSH tunnel. Do not bind the portal binary directly to the Internet.
+
+Issue an enrollment challenge:
+
+```sh
+curl -sS \
+  -H 'Content-Type: application/json' \
+  -d '{"node_id":"node-testnet-001"}' \
+  http://127.0.0.1:8080/api/v1/agent/enrollment-challenges
+```
+
+Prepare the Python agent client. Use wheel distribution for the agent side. Use editable install only for development:
 
 ```sh
 cd agent_py
@@ -72,15 +121,6 @@ Generate agent keys:
 cd agent_py
 . .venv/bin/activate
 python -m ssnp_agent --config ../agent/config.testnet.example.yaml gen-key --out-dir ../agent/keys
-```
-
-Issue an enrollment challenge:
-
-```sh
-curl -sS \
-  -H 'Content-Type: application/json' \
-  -d '{"node_id":"node-testnet-001"}' \
-  http://127.0.0.1:8080/api/v1/agent/enrollment-challenges
 ```
 
 Enroll the agent:
@@ -102,14 +142,14 @@ cd agent_py
 python -m ssnp_agent --config ../agent/config.testnet.example.yaml run
 ```
 
-Start two probe workers. Duplicate the config and change only `region_id` per instance:
+Start the probe worker:
 
 ```sh
-cd probe
-go run ./cmd/probe-worker --config ./config.testnet.example.yaml run
+sudo systemctl start ssnp-probe
+sudo systemctl status ssnp-probe
 ```
 
-Qualification requires evidence from at least two regions in one UTC day. One worker instance is not enough.
+Qualification requires evidence from at least two regions in one UTC day. One worker instance is not enough. Install the same bundle on a second server and change only `/etc/ssnp-probe/config.yaml` `region_id` for the second instance.
 
 ## Validation Reads
 

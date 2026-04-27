@@ -1,0 +1,28 @@
+[Unit]
+Description=SSNP Portal Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ssnp-portal
+Group=ssnp-portal
+WorkingDirectory=/opt/ssnp-portal
+ExecStart=/opt/ssnp-portal/bin/portal-server \
+  --listen 127.0.0.1:8080 \
+  --policy /etc/ssnp-portal/program_agent_policy.v2026-04.yaml \
+  --nodes-config /etc/ssnp-portal/nodes.testnet.yaml \
+  --state-path /var/lib/ssnp-portal/portal-state.json \
+  --nominal-daily-pool 1000 \
+  --notifier-mode stdout
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ssnp-portal
+StateDirectory=ssnp-portal
+
+[Install]
+WantedBy=multi-user.target

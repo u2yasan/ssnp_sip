@@ -1,4 +1,5 @@
 .cache/
+dist/
 agent/.cache/
 agent_py/.venv/
 agent_py/build/
@@ -8,5 +9,7 @@ agent_py/__pycache__/
 agent_py/ssnp_agent/__pycache__/
 agent_py/tests/__pycache__/
 portal/.cache/
+portal/portal-server
+portal/nodes.testnet.yaml
 portal-state.json
 !testdata/smoke/portal-state.json

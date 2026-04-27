@@ -1,0 +1,34 @@
+name: go-release
+
+on:
+  push:
+    tags:
+      - "go-v*"
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: |
+            portal/go.sum
+            probe/go.sum
+      - run: make testnet-local
+      - run: ./scripts/build-go-release.sh
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/go-release/portal-server-linux-amd64
+            dist/go-release/probe-worker-linux-amd64
+            dist/go-release/program_agent_policy.v2026-04.yaml
+            dist/go-release/nodes.testnet.example.yaml
+            dist/go-release/probe.config.testnet.example.yaml
+            dist/go-release/ssnp-portal.service
+            dist/go-release/ssnp-probe.service
+            dist/go-release/install-go-release.sh
+            dist/go-release/SHA256SUMS
