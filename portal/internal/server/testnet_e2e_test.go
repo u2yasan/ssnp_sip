@@ -131,13 +131,10 @@ func TestTestnetOperableE2E(t *testing.T) {
 
 	var publicStatus struct {
 		Items []struct {
-			NodeID            string  `json:"node_id"`
-			Qualified         bool    `json:"qualified"`
-			RewardEligible    bool    `json:"reward_eligible"`
-			AvailabilityRatio float64 `json:"availability_ratio"`
-			FinalizedLagRatio float64 `json:"finalized_lag_ratio"`
-			ChainLagRatio     float64 `json:"chain_lag_ratio"`
-			QualifiedRank     int     `json:"qualified_rank"`
+			NodeID         string `json:"node_id"`
+			Qualified      bool   `json:"qualified"`
+			RewardEligible bool   `json:"reward_eligible"`
+			RankPosition   *int   `json:"rank_position"`
 		} `json:"items"`
 	}
 	getJSONOK(t, "http://"+listener.Addr().String()+"/api/v1/public-node-status/"+dateUTC, &publicStatus)
@@ -145,11 +142,34 @@ func TestTestnetOperableE2E(t *testing.T) {
 		publicStatus.Items[0].NodeID != "node-abc" ||
 		!publicStatus.Items[0].Qualified ||
 		!publicStatus.Items[0].RewardEligible ||
-		publicStatus.Items[0].AvailabilityRatio < 0.99 ||
-		publicStatus.Items[0].FinalizedLagRatio < 0.95 ||
-		publicStatus.Items[0].ChainLagRatio < 0.95 ||
-		publicStatus.Items[0].QualifiedRank != 1 {
+		publicStatus.Items[0].RankPosition == nil ||
+		*publicStatus.Items[0].RankPosition != 1 {
 		t.Fatalf("public status = %#v", publicStatus)
+	}
+
+	var rankings struct {
+		Items []struct {
+			NodeID            string  `json:"node_id"`
+			RankPosition      int     `json:"rank_position"`
+			AvailabilityScore float64 `json:"availability_score"`
+			FinalizationScore float64 `json:"finalization_score"`
+			ChainSyncScore    float64 `json:"chain_sync_score"`
+			BasePerformance   float64 `json:"base_performance_score"`
+			TotalScore        float64 `json:"total_score"`
+			RewardEligible    bool    `json:"reward_eligible"`
+		} `json:"items"`
+	}
+	getJSONOK(t, "http://"+listener.Addr().String()+"/api/v1/rankings/"+dateUTC, &rankings)
+	if len(rankings.Items) != 1 ||
+		rankings.Items[0].NodeID != "node-abc" ||
+		rankings.Items[0].RankPosition != 1 ||
+		rankings.Items[0].AvailabilityScore <= 0 ||
+		rankings.Items[0].FinalizationScore <= 0 ||
+		rankings.Items[0].ChainSyncScore <= 0 ||
+		rankings.Items[0].BasePerformance <= 0 ||
+		rankings.Items[0].TotalScore <= 0 ||
+		!rankings.Items[0].RewardEligible {
+		t.Fatalf("rankings = %#v", rankings)
 	}
 
 	var rewardAllocations struct {
