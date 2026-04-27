@@ -41,7 +41,9 @@ func (s *Server) validateTimestamp(raw string) error {
 func decodeObject(r *http.Request) (map[string]any, error) {
 	defer r.Body.Close()
 	var payload map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	decoder.UseNumber()
+	if err := decoder.Decode(&payload); err != nil {
 		return nil, err
 	}
 	return payload, nil
@@ -58,6 +60,12 @@ func intField(payload map[string]any, key string) (int, bool) {
 		return 0, false
 	}
 	switch value := raw.(type) {
+	case json.Number:
+		intValue, err := value.Int64()
+		if err != nil {
+			return 0, false
+		}
+		return int(intValue), true
 	case float64:
 		if value != float64(int(value)) {
 			return 0, false
@@ -73,11 +81,22 @@ func optionalNonNegativeIntField(payload map[string]any, key string) (*int, bool
 	if !ok || raw == nil {
 		return nil, false, nil
 	}
-	value, ok := raw.(float64)
-	if !ok || value != float64(int(value)) {
+	var intValue int
+	switch value := raw.(type) {
+	case json.Number:
+		parsed, err := value.Int64()
+		if err != nil {
+			return nil, false, fmt.Errorf("%s must be an integer", key)
+		}
+		intValue = int(parsed)
+	case float64:
+		if value != float64(int(value)) {
+			return nil, false, fmt.Errorf("%s must be an integer", key)
+		}
+		intValue = int(value)
+	default:
 		return nil, false, fmt.Errorf("%s must be an integer", key)
 	}
-	intValue := int(value)
 	if intValue < 0 {
 		return nil, false, fmt.Errorf("%s must be >= 0", key)
 	}
