@@ -41,7 +41,7 @@ The build output is written to `dist/release/` and includes:
 Install a built wheel onto a server:
 
 ```sh
-sudo ../scripts/install-agent-py-wheel.sh dist/release/ssnp_agent-0.1.0-py3-none-any.whl
+sudo ../scripts/install-agent-py-wheel.sh dist/release/ssnp_agent_client-0.1.0-py3-none-any.whl
 ```
 
 The service file assumes:

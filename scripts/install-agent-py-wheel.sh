@@ -2,7 +2,7 @@
 set -eu
 
 if [ "$#" -ne 1 ]; then
-  printf '%s\n' "usage: $0 /path/to/ssnp_agent-<version>-py3-none-any.whl" >&2
+  printf '%s\n' "usage: $0 /path/to/ssnp_agent_client-<version>-py3-none-any.whl" >&2
   exit 1
 fi
 

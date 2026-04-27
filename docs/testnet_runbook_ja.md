@@ -125,30 +125,54 @@ curl -sS \
   http://127.0.0.1:18080/api/v1/agent/enrollment-challenges
 ```
 
-Python agent client を準備する。agent 側は wheel 配布を使う。開発時だけ editable install を使う:
+Python agent client は、オペレーター node 側で動く CLI/service である。portal から発行された enrollment challenge に対して agent key で署名し、その後 heartbeat、hardware check、telemetry を portal に送る。
+
+testnet server では repository clone や `pip install -e .` を使わず、GitHub Release から agent wheel bundle を取得して install する。agent wheel bundle の作成と配布は `docs/agent_py_distribution.md` を見ること。
+
+agent wheel bundle を取得する:
 
 ```sh
-cd agent_py
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -e .
+mkdir -p /tmp/ssnp-agent-release
+cd /tmp/ssnp-agent-release
+
+gh release download agent-v<version> \
+  --repo u2yasan/ssnp_sip \
+  --dir .
+```
+
+checksum を確認する:
+
+```sh
+sha256sum -c SHA256SUMS
+```
+
+bundle に含まれる installer で agent wheel を install する:
+
+```sh
+chmod +x install-agent-py-wheel.sh
+sudo ./install-agent-py-wheel.sh ./ssnp_agent_client-<version>-py3-none-any.whl
+```
+
+agent config を編集する:
+
+```sh
+sudo editor /etc/ssnp-agent/config.yaml
 ```
 
 agent key を生成する:
 
 ```sh
-cd agent_py
-. .venv/bin/activate
-python -m ssnp_agent --config ../agent/config.testnet.example.yaml gen-key --out-dir ../agent/keys
+sudo -u ssnp-agent /opt/ssnp-agent/.venv/bin/ssnp-agent \
+  --config /etc/ssnp-agent/config.yaml \
+  gen-key \
+  --out-dir /etc/ssnp-agent/keys
 ```
 
 agent を enroll する:
 
 ```sh
-cd agent_py
-. .venv/bin/activate
-python -m ssnp_agent \
-  --config ../agent/config.testnet.example.yaml \
+sudo -u ssnp-agent /opt/ssnp-agent/.venv/bin/ssnp-agent \
+  --config /etc/ssnp-agent/config.yaml \
   enroll \
   --challenge-id <challenge-id>
 ```
@@ -156,9 +180,8 @@ python -m ssnp_agent \
 agent loop を開始する:
 
 ```sh
-cd agent_py
-. .venv/bin/activate
-python -m ssnp_agent --config ../agent/config.testnet.example.yaml run
+sudo systemctl start ssnp-agent
+sudo systemctl status ssnp-agent
 ```
 
 probe worker を起動する:

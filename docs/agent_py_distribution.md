@@ -17,21 +17,22 @@ Build the release bundle from the repository root:
 
 The bundle is written to `agent_py/dist/release/` and contains:
 
-- `ssnp_agent-<version>-py3-none-any.whl`
-- `ssnp_agent-<version>.tar.gz`
+- `ssnp_agent_client-<version>-py3-none-any.whl`
+- `ssnp_agent_client-<version>.tar.gz`
 - `requirements-lock.txt`
 - `config.example.yaml`
 - `ssnp-agent.service`
+- `install-agent-py-wheel.sh`
 - `SHA256SUMS`
 
 This bundle is the artifact to upload to a private GitHub Release.
 
 ## Server Install
 
-Copy the release bundle to the server, then run:
+Download or copy the release bundle to the server, then run the installer included in that bundle:
 
 ```sh
-sudo ./scripts/install-agent-py-wheel.sh /path/to/ssnp_agent-<version>-py3-none-any.whl
+sudo ./install-agent-py-wheel.sh /path/to/ssnp_agent_client-<version>-py3-none-any.whl
 ```
 
 The installer creates:
@@ -73,7 +74,7 @@ Upgrade:
 
 ```sh
 sudo systemctl stop ssnp-agent
-sudo ./scripts/install-agent-py-wheel.sh /path/to/ssnp_agent-<new-version>-py3-none-any.whl
+sudo ./install-agent-py-wheel.sh /path/to/ssnp_agent_client-<new-version>-py3-none-any.whl
 sudo systemctl start ssnp-agent
 ```
 

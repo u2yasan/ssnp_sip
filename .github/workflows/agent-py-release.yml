@@ -25,9 +25,10 @@ jobs:
       - uses: softprops/action-gh-release@v3
         with:
           files: |
-            agent_py/dist/release/ssnp_agent-*.whl
-            agent_py/dist/release/ssnp_agent-*.tar.gz
+            agent_py/dist/release/ssnp_agent_client-*.whl
+            agent_py/dist/release/ssnp_agent_client-*.tar.gz
             agent_py/dist/release/requirements-lock.txt
             agent_py/dist/release/config.example.yaml
             agent_py/dist/release/ssnp-agent.service
+            agent_py/dist/release/install-agent-py-wheel.sh
             agent_py/dist/release/SHA256SUMS

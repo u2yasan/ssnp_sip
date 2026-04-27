@@ -15,10 +15,11 @@ rm -rf "$DIST_DIR"
 python3 -m build
 
 mkdir -p "$RELEASE_DIR"
-cp "$DIST_DIR"/ssnp_agent-* "$RELEASE_DIR"/
+cp "$DIST_DIR"/ssnp_agent_client-* "$RELEASE_DIR"/
 cp "$AGENT_DIR/requirements-lock.txt" "$RELEASE_DIR"/
 cp "$ROOT_DIR/agent/config.example.yaml" "$RELEASE_DIR"/config.example.yaml
 cp "$ROOT_DIR/deploy/systemd/ssnp-agent.service" "$RELEASE_DIR"/
+cp "$ROOT_DIR/scripts/install-agent-py-wheel.sh" "$RELEASE_DIR"/
 
 (
   cd "$RELEASE_DIR"
