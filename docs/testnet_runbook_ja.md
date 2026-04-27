@@ -76,6 +76,25 @@ server 側に portal/probe binary と systemd unit を install する:
 sudo ./install-go-release.sh /path/to/go-release
 ```
 
+portal の listen address を設定する。外部 probe/agent から直接接続させる場合は `0.0.0.0:<port>` を使う:
+
+```sh
+sudo editor /etc/ssnp-portal/portal.env
+```
+
+例:
+
+```sh
+SSNP_PORTAL_LISTEN=0.0.0.0:18080
+```
+
+firewall ではこの port だけを開ける:
+
+```sh
+sudo ufw allow 18080/tcp
+sudo ufw status
+```
+
 portal node seed を編集する:
 
 ```sh
@@ -95,7 +114,7 @@ sudo systemctl start ssnp-portal
 sudo systemctl status ssnp-portal
 ```
 
-現在の `ssnp-portal.service` は `127.0.0.1:8080` で listen する。別 host の agent/probe から接続させる場合は、同一 host 上の TLS reverse proxy、VPN、または SSH tunnel を使う。portal binary を Internet に直 bind しない。
+現在の `ssnp-portal.service` は `/etc/ssnp-portal/portal.env` の `SSNP_PORTAL_LISTEN` を `--listen` に渡す。port を変えた場合は probe config の `portal_base_url` も同じ port に合わせる。
 
 enrollment challenge を発行する:
 
@@ -103,7 +122,7 @@ enrollment challenge を発行する:
 curl -sS \
   -H 'Content-Type: application/json' \
   -d '{"node_id":"node-testnet-001"}' \
-  http://127.0.0.1:8080/api/v1/agent/enrollment-challenges
+  http://127.0.0.1:18080/api/v1/agent/enrollment-challenges
 ```
 
 Python agent client を準備する。agent 側は wheel 配布を使う。開発時だけ editable install を使う:

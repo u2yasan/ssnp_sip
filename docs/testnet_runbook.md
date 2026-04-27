@@ -76,6 +76,25 @@ Install portal/probe binaries and systemd units on the server:
 sudo ./install-go-release.sh /path/to/go-release
 ```
 
+Configure the portal listen address. If external probe/agent processes connect directly, use `0.0.0.0:<port>`:
+
+```sh
+sudo editor /etc/ssnp-portal/portal.env
+```
+
+Example:
+
+```sh
+SSNP_PORTAL_LISTEN=0.0.0.0:18080
+```
+
+Open only that port in the firewall:
+
+```sh
+sudo ufw allow 18080/tcp
+sudo ufw status
+```
+
 Edit the portal node seed:
 
 ```sh
@@ -95,7 +114,7 @@ sudo systemctl start ssnp-portal
 sudo systemctl status ssnp-portal
 ```
 
-The current `ssnp-portal.service` listens on `127.0.0.1:8080`. If agent/probe processes on other hosts must connect to it, use a TLS reverse proxy on the same host, a VPN, or an SSH tunnel. Do not bind the portal binary directly to the Internet.
+The current `ssnp-portal.service` passes `/etc/ssnp-portal/portal.env` `SSNP_PORTAL_LISTEN` to `--listen`. If you change the port, update probe config `portal_base_url` to the same port.
 
 Issue an enrollment challenge:
 
@@ -103,7 +122,7 @@ Issue an enrollment challenge:
 curl -sS \
   -H 'Content-Type: application/json' \
   -d '{"node_id":"node-testnet-001"}' \
-  http://127.0.0.1:8080/api/v1/agent/enrollment-challenges
+  http://127.0.0.1:18080/api/v1/agent/enrollment-challenges
 ```
 
 Prepare the Python agent client. Use wheel distribution for the agent side. Use editable install only for development:

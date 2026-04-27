@@ -67,6 +67,13 @@ if [ ! -f "$PORTAL_CONFIG_DIR/nodes.testnet.yaml" ]; then
   install -m 0644 "$RELEASE_DIR/nodes.testnet.example.yaml" "$PORTAL_CONFIG_DIR/nodes.testnet.yaml"
 fi
 
+if [ ! -f "$PORTAL_CONFIG_DIR/portal.env" ]; then
+  cat > "$PORTAL_CONFIG_DIR/portal.env" <<'EOF'
+SSNP_PORTAL_LISTEN=0.0.0.0:18080
+EOF
+  chmod 0644 "$PORTAL_CONFIG_DIR/portal.env"
+fi
+
 if [ ! -f "$PROBE_CONFIG_DIR/config.yaml" ]; then
   install -m 0644 "$RELEASE_DIR/probe.config.testnet.example.yaml" "$PROBE_CONFIG_DIR/config.yaml"
 fi
@@ -83,4 +90,4 @@ systemctl enable ssnp-probe.service
 
 printf '%s\n' "installed portal binary into $PORTAL_ROOT/bin"
 printf '%s\n' "installed probe binary into $PROBE_ROOT/bin"
-printf '%s\n' "edit $PORTAL_CONFIG_DIR/nodes.testnet.yaml and $PROBE_CONFIG_DIR/config.yaml before starting services"
+printf '%s\n' "edit $PORTAL_CONFIG_DIR/portal.env, $PORTAL_CONFIG_DIR/nodes.testnet.yaml, and $PROBE_CONFIG_DIR/config.yaml before starting services"

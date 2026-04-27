@@ -8,8 +8,9 @@ Type=simple
 User=ssnp-portal
 Group=ssnp-portal
 WorkingDirectory=/opt/ssnp-portal
+EnvironmentFile=/etc/ssnp-portal/portal.env
 ExecStart=/opt/ssnp-portal/bin/portal-server \
-  --listen 127.0.0.1:8080 \
+  --listen ${SSNP_PORTAL_LISTEN} \
   --policy /etc/ssnp-portal/program_agent_policy.v2026-04.yaml \
   --nodes-config /etc/ssnp-portal/nodes.testnet.yaml \
   --state-path /var/lib/ssnp-portal/portal-state.json \
